@@ -15,58 +15,19 @@ if (FALSE) {
 
 caresite <- fread("care_sites_x_merged.csv")
 visit <- fread("/data/davis_lab/shared/phenotype_data/biovu/delivered_data/sd_wide_pull/20230607_pull/20230607_sd_pull_visit_occurrence_all.txt.gz")
-visit_detail <- fread("/data/davis_lab/shared/phenotype_data/biovu/delivered_data/sd_wide_pull/20230607_pull/20230607_sd_pull_visit_detail.txt.gz")
 
-#### basic sum stats ####
-visit_summ <-  visit %>%
-  group_by(care_site_id) %>%
-  count() %>%
-  arrange(-n) %>%
-  left_join(caresite,"care_site_id")
+## map visit types
+visit[visit_concept_id == "9201", visit_type := "inpatient"]
+visit[visit_concept_id == "9202", visit_type := "outpatient"]
+visit[visit_concept_id == "9203", visit_type := "er"]
+visit[visit_concept_id == "0", visit_type := "unknown"]
 
-grids1 <- unique(visit$GRID)
-grids2 <- unique(visit_detail$GRID)
-all(grids2 %in% grids1) # yes
+visit[, visit_occurrence_id := NULL]
+visit[, visit_concept_id := NULL]
 
-visitDetail_summ <- visit_detail %>%
-  group_by(care_site_id) %>%
-  count() %>%
-  arrange(-n) %>%
-  left_join(caresite,"care_site_id")
-
-visit_visitDetail_merged_summ <- merge(data.table(visit_summ)[,.(care_site_id,n)],
-                                       data.table(visitDetail_summ)[,.(care_site_id,n)],
-                                       by="care_site_id", all=T)
-visit_visitDetail_merged_summ[is.na(n.x), n.x:=0]
-visit_visitDetail_merged_summ[is.na(n.y), n.y:=0]
-visit_visitDetail_merged_summ <- merge(caresite, visit_visitDetail_merged_summ, by="care_site_id")
-
-unique_to_visitOcc <- visit_visitDetail_merged_summ[n.y==0]
-unique_to_visitDetail <- visit_visitDetail_merged_summ[n.x==0]
-
-#### merge visit_occurrence and visit_detail tables ####
-visit$table <- "visit_occurrence"
-visit_detail$table <- "visit_detail"
-
-setnames(visit_detail,"visit_detail_concept_id","visit_concept_id")
-
-visit <- unique(visit[,.(GRID,visit_occurrence_id,visit_concept_id,visit_start_date,visit_end_date,care_site_id,table)])
-visit_detail <- unique(visit_detail[,.(GRID,visit_occurrence_id,visit_concept_id,visit_start_date,visit_end_date,care_site_id,table)])
-
-visits_all <- unique(rbind(visit,visit_detail))
-
-visits_all[visit_concept_id=="9201", visit_type := "inpatient"]
-visits_all[visit_concept_id=="9202", visit_type := "outpatient"]
-visits_all[visit_concept_id=="9203", visit_type := "er"]
-visits_all[visit_concept_id=="0", visit_type := "unknown"]
-
-visits_all[,visit_occurrence_id:=NULL]
-visits_all[,visit_concept_id:=NULL]
-visits_all <- unique(visits_all)
-
-## count visit types per care site - visit occurrence table only for now!
-visits_sites <- left_join(visits_all, caresite, by="care_site_id")
-visits_sites_summ <- visits_sites[table=="visit_occurrence"] %>%
+## count visit types per care site 
+visits_sites <- left_join(visit, caresite, by="care_site_id")
+visits_sites_summ <- visits_sites %>%
   group_by(care_site_id, visit_type) %>%
   count()
 
@@ -87,6 +48,6 @@ visits_sites_summ_wide[is.na(setting), setting := "unknown"]
 
 setorder(visits_sites_summ_wide, care_site_id)
 
-fwrite(visits_sites_summ_wide, "care_site_visit_type_summary.csv")
+fwrite(visits_sites_summ_wide, "care_site_visit_type_summary_121523.csv")
 
 
