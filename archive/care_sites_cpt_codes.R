@@ -7,7 +7,6 @@ options(stringsAsFactors = F)
 
 setwd("/data/davis_lab/allie/care_sites")
 
-caresite <- fread("care_sites_x_merged.csv")
 visit <- fread("/data/davis_lab/shared/phenotype_data/biovu/delivered_data/sd_wide_pull/20230607_pull/20230607_sd_pull_visit_occurrence_all.txt.gz")
 
 cpt <- readRDS("/data/davis_lab/allie/commonly_used/20230607_sd_pull_x_codes_proc.Rds")
