@@ -91,7 +91,7 @@ table(dat$pc_cohort)
 table(dat$psych_cohort)
 ```
 
-## run phewas
+## run phewas (EUR-ancestry cohort for now)
 ```{r}
 phe_cols<- names(dat)[grepl("^[[:digit:]]", names(dat))]
 
@@ -138,25 +138,25 @@ my_phewas <- function(dt, covar = c("sex", "median_age", paste0("PC", 1:10))) {
 ```
 
 ```{r, eval = TRUE}
-res_phewas_full <- my_phewas(dat)
+res_phewas_full <- my_phewas(dat[genetic_ancestry == "EUR"])
 saveRDS(res_phewas_full, "../output/scz_pgs_phewas_full_cohort_090924.Rds")
 
-res_phewas_pc <- my_phewas(dat[pc_cohort == TRUE])
+res_phewas_pc <- my_phewas(dat[pc_cohort == TRUE & genetic_ancestry == "EUR"])
 saveRDS(res_phewas_pc, "../output/scz_pgs_phewas_pc_cohort_090924.Rds")
 
-res_phewas_psych <- my_phewas(dat[psych_cohort == TRUE])
+res_phewas_psych <- my_phewas(dat[psych_cohort == TRUE & genetic_ancestry == "EUR"])
 saveRDS(res_phewas_psych, "../output/scz_pgs_phewas_psych_cohort_090924.Rds")
 ```
 
 ### phewas controlling for psychosis phecode
 ```{r, eval = TRUE}
-res_phewas_full <- my_phewas(dat, covar = c("sex", "median_age","295", paste0("PC", 1:10)))
+res_phewas_full <- my_phewas(dat[genetic_ancestry == "EUR"], covar = c("sex", "median_age","295", paste0("PC", 1:10)))
 saveRDS(res_phewas_full, "../output/scz_pgs_phewas_full_cohort_adj_psychosis_090924.Rds")
 
-res_phewas_pc <- my_phewas(dat[pc_cohort == TRUE], covar = c("sex", "median_age","295", paste0("PC", 1:10)))
+res_phewas_pc <- my_phewas(dat[pc_cohort == TRUE & genetic_ancestry == "EUR"], covar = c("sex", "median_age","295", paste0("PC", 1:10)))
 saveRDS(res_phewas_pc, "../output/scz_pgs_phewas_pc_cohort_adj_psychosis_090924.Rds")
 
-res_phewas_psych <- my_phewas(dat[psych_cohort == TRUE], covar = c("sex", "median_age","295", paste0("PC", 1:10)))
+res_phewas_psych <- my_phewas(dat[psych_cohort == TRUE & genetic_ancestry == "EUR"], covar = c("sex", "median_age","295", paste0("PC", 1:10)))
 saveRDS(res_phewas_psych, "../output/scz_pgs_phewas_psych_cohort_adj_psychosis_090924.Rds")
 ```
 
