@@ -1,0 +1,244 @@
+---
+title: "Care sites application #2"
+date: "2024-09-08"
+output: html_document
+---
+```{r setup, include = FALSE, message = FALSE, warning = FALSE, tidy = TRUE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE, tidy = TRUE, fig.width=6, fig.height=4)
+pacman::p_load(data.table, dplyr, foreach, PheWAS, ggplot2, plotly, ggpubr, scales, RColorBrewer, ggrepel)
+setwd("/data/davis_lab/allie/care_sites/scripts")
+```
+
+## setup and load data
+```{r}
+## load care site map
+map <- fread("/data/davis_lab/allie/care_sites/CareSite_Map_Multispecialty_Long_Format_011024.csv")
+
+## load demographics
+dat <- fread("/data/davis_lab/allie/generate_phecode_tables/covariate_files/20230607_sd_wide_covariates_121023.txt")
+
+## load genotyping covariates
+covar_geno_eur <- fread("/data/davis_lab/shared/genotype_data/biovu/processed/imputed/best_guess/MEGA/MEGA_recalled/20200518_MEGA.GRID.RACE.ETH.GEN.batch.PCs.covariates_EU.filt1.txt")
+covar_geno_afr <- fread("/data/davis_lab/shared/genotype_data/biovu/processed/imputed/best_guess/MEGA/MEGA_recalled/20200515_MEGA.GRID.RACE.ETH.GEN.batch.PCs.covariates_AA.filt1.txt")
+
+covar_geno <- rbind(covar_geno_eur, covar_geno_afr) %>% select(-GENDER, -RACE, -ETHNICITY)
+dat <- merge(dat, covar_geno, by = "GRID")
+
+## load and z-score normalize PGS
+pgs_eur <- fread("/data/davis_lab/allie/generate_psych_pgs/output/psych_pgs_eur_030824.txt") %>%
+  select(GRID, pgs.scz = pgs.scz.eur) %>%
+  mutate(genetic_ancestry = "EUR") %>%
+  data.table()
+
+pgs_eur[, pgs.scz.scale := scale(pgs.scz)]
+
+pgs_afr <- fread("/data/davis_lab/allie/generate_psych_pgs/output/psych_pgs_afr_030824.txt") %>%
+  select(GRID, pgs.scz = pgs.scz.afr.csx) %>%
+  mutate(genetic_ancestry = "AFR") %>%
+  data.table()
+
+pgs_afr[, pgs.scz.scale := scale(pgs.scz)]
+
+pgs <- rbind(pgs_eur, pgs_afr) %>% select(GRID,genetic_ancestry,pgs.scz.scale)
+dat <- merge(dat, pgs, by = "GRID")
+
+stopifnot(dat$mega_genetic_ancestry == dat$genetic_ancestry)
+dat[, mega_genetic_ancestry := NULL]
+
+## load phecodes for MEGA cohort
+phecodes <- readRDS("/data/davis_lab/shared/phenotype_data/biovu/phecode_tables/mega_genotyped_eur_afr_ancestry_phecode_table_20230607_pull_2_distinct_dates_no_exclusions_121023.Rds")
+dat <- merge(dat, phecodes, by = "GRID")
+
+## load and filter visits
+if (FALSE) {
+  visit <- fread("/data/davis_lab/shared/phenotype_data/biovu/delivered_data/sd_wide_pull/20230607_pull/20230607_sd_pull_visit_occurrence_all.txt.gz")
+
+  ## fix missing visit end dates
+  visit[is.na(visit_end_date), visit_end_date := visit_start_date]
+
+  ## remove visits with care_site_id = 0 (null care site)
+  visit <- visit[care_site_id != 0]
+
+  ## remove unneeded columns
+  visit <- unique(visit[, .(GRID, visit_start_date, visit_end_date, care_site_id)])
+
+  ## restrict to MEGA cohort
+  visit <- visit[GRID %in% icd$GRID]
+
+  ## save
+  fwrite(visit, "data/mega_grids_visits_cleaned_dates_non_null_sites.csv")
+}
+visit <- fread("../data/mega_grids_visits_cleaned_dates_non_null_sites.csv")
+```
+
+## construct cohorts
+### primary care cohort
+```{r}
+pc_sites <- unique(map[SpecialtyLong == "PrimaryCare", care_site_id])
+pc_grids <- unique(visit[care_site_id %in% pc_sites, GRID])
+dat[, pc_cohort := GRID %in% pc_grids]
+```
+
+### psych cohort
+```{r}
+psych_sites <- unique(map[SpecialtyLong == "Psychiatry", care_site_id])
+psych_grids <- unique(visit[care_site_id %in% psych_sites, GRID])
+dat[, psych_cohort := GRID %in% psych_grids]
+```
+
+```{r}
+table(dat$pc_cohort)
+table(dat$psych_cohort)
+```
+
+## run phewas
+```{r}
+phe_cols<- names(dat)[grepl("^[[:digit:]]", names(dat))]
+
+## phecode case counts
+# count number of cases per sex per phecode
+case_counts <- function(Sex) {
+  case_counts <- data.frame(count = unlist(lapply(dat[sex == Sex, phe_cols, with = F], function(phe) sum(phe, na.rm = T))))
+  case_counts$phecode <- rownames(case_counts)
+  case_counts <- data.table(case_counts[, c(2, 1)])
+  case_counts
+}
+
+counts_f <- case_counts("F")
+counts_m <- case_counts("M")
+counts_both <- merge(counts_f, counts_m, by = "phecode", suffixes = c(".f", ".m"))
+counts_both <- addPhecodeInfo(counts_both)
+counts_both <- counts_both[, .(phecode, description, group, count.f, count.m)]
+counts_both[, count.tot := count.f + count.m]
+
+## remove phecodes with <50 cases overall or <5 cases in one sex
+phe.keep <- counts_both[count.tot >= 50 & count.f >= 5 & count.m >= 5, phecode]
+
+## phewas function
+my_phewas <- function(dt, covar = c("sex", "median_age", paste0("PC", 1:10))) {
+  res <- phewas(
+      data = dt, phenotypes = phe.keep[!(phe.keep %in% covar)], predictors = "pgs.scz.scale",
+      covariates = covar, additive.genotypes = F, min.records = 50,
+      significance.threshold = "bonferroni"
+  )
+
+  res <- data.table(addPhecodeInfo(res, groupcolors = T, groups = T, groupnums = T))
+  setorder(res, p, -OR)
+  res[, ci.lower := exp(beta - 1.96 * SE)]
+  res[, ci.upper := exp(beta + 1.96 * SE)]
+
+  res <- res[!is.na(beta)]
+
+  res <- res %>% 
+    select(-predictor, -adjustment, -type, -HWE_p, -allele_freq, -n_no_snp) %>%
+    data.table()
+
+  return(res)
+}
+```
+
+```{r, eval = TRUE}
+res_phewas_full <- my_phewas(dat)
+saveRDS(res_phewas_full, "../output/scz_pgs_phewas_full_cohort_090924.Rds")
+
+res_phewas_pc <- my_phewas(dat[pc_cohort == TRUE])
+saveRDS(res_phewas_pc, "../output/scz_pgs_phewas_pc_cohort_090924.Rds")
+
+res_phewas_psych <- my_phewas(dat[psych_cohort == TRUE])
+saveRDS(res_phewas_psych, "../output/scz_pgs_phewas_psych_cohort_090924.Rds")
+```
+
+### phewas controlling for psychosis phecode
+```{r, eval = TRUE}
+res_phewas_full <- my_phewas(dat, covar = c("sex", "median_age","295", paste0("PC", 1:10)))
+saveRDS(res_phewas_full, "../output/scz_pgs_phewas_full_cohort_adj_psychosis_090924.Rds")
+
+res_phewas_pc <- my_phewas(dat[pc_cohort == TRUE], covar = c("sex", "median_age","295", paste0("PC", 1:10)))
+saveRDS(res_phewas_pc, "../output/scz_pgs_phewas_pc_cohort_adj_psychosis_090924.Rds")
+
+res_phewas_psych <- my_phewas(dat[psych_cohort == TRUE], covar = c("sex", "median_age","295", paste0("PC", 1:10)))
+saveRDS(res_phewas_psych, "../output/scz_pgs_phewas_psych_cohort_adj_psychosis_090924.Rds")
+```
+
+```{r}
+res_phewas_full <- readRDS("../output/scz_pgs_phewas_full_cohort_090924.Rds")
+res_phewas_pc <- readRDS("../output/scz_pgs_phewas_pc_cohort_090924.Rds")
+res_phewas_psych <- readRDS("../output/scz_pgs_phewas_psych_cohort_090924.Rds")
+
+res_phewas_full_adj_psychosis <- readRDS("../output/scz_pgs_phewas_full_cohort_adj_psychosis_090924.Rds")
+res_phewas_pc_adj_psychosis <- readRDS("../output/scz_pgs_phewas_pc_cohort_adj_psychosis_090924.Rds")
+res_phewas_psych_adj_psychosis <- readRDS("../output/scz_pgs_phewas_psych_cohort_adj_psychosis_090924.Rds")
+```
+
+## phewas comparisons
+```{r}
+# create my own color: fixed mapping between group and color
+group_list <- c("circulatory system", "congenital anomalies", "dermatologic", "digestive", "endocrine/metabolic", "genitourinary", "hematopoietic", "infectious diseases", "injuries & poisonings", "mental disorders", "musculoskeletal", "neoplasms", "neurological", "pregnancy complications", "respiratory", "sense organs", "symptoms")
+color_groups <- data.frame(group = group_list, color = rep(brewer.pal(8, "Set2"), 3)[1:length(group_list)])
+
+my_scatter <- function(dt) {
+  r2 <- cor(dt$beta.x, dt$beta.y)^2
+
+  dt[, bonf_only_y := ifelse(bonferroni.x==FALSE & bonferroni.y==TRUE, TRUE, FALSE)]
+
+  ggplot(dt, aes(x = beta.x, y = beta.y, color = group, fill = group, label = description)) +
+    geom_point() +
+    geom_point(data = dt[bonf_only_y==TRUE], color = "black", size = 3) +
+    geom_text(data = dt[bonf_only_y==TRUE], color = "black", size = 2) +
+    scale_color_manual(values = color_groups$color, breaks = color_groups$group) +
+    scale_fill_manual(values = color_groups$color, breaks = color_groups$group) +
+    geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
+    annotate("text", x = 0, y = 0.5, label = paste("r^2 =", round(r2, 2)), size = 3) +
+    theme_minimal() +
+    guides(fill="none")
+}
+```
+
+### full cohort vs primary care
+```{r}
+full_vs_pc <- merge(res_phewas_full, res_phewas_pc, 
+                    by = c("phenotype","description","groupnum","group","color"), 
+                    suffixes = c(".x", ".y"))
+
+p <- my_scatter(full_vs_pc) +
+  labs(title = "Full cohort vs primary care cohort", x = "Full cohort", y = "Primary care cohort") 
+
+ggplotly(p)
+```
+
+### primary care vs psych
+```{r}
+pc_vs_psych <- merge(res_phewas_pc, res_phewas_psych,
+                    by = c("phenotype","description","groupnum","group","color"), 
+                    suffixes = c(".x", ".y"))
+
+p <- my_scatter(pc_vs_psych) +
+  expand_limits(x = -0.5) +
+  labs(title = "Primary care cohort vs psych cohort", x = "Primary care cohort", y = "Psychiatry cohort") 
+
+ggplotly(p)
+```
+
+### full cohort vs primary care - adjusting for psychosis
+```{r}
+full_vs_pc_adj_psychosis <- merge(res_phewas_full_adj_psychosis, res_phewas_pc_adj_psychosis, 
+                    by = c("phenotype","description","groupnum","group","color"), 
+                    suffixes = c(".x", ".y"))
+
+p <- my_scatter(full_vs_pc_adj_psychosis) +
+  labs(x = "Full cohort", y = "Primary care cohort") 
+
+ggplotly(p)
+```
+
+### primary care vs psych - adjusting for psychosis
+```{r}
+pc_vs_psych_adj_psychosis <- merge(res_phewas_pc_adj_psychosis, res_phewas_psych_adj_psychosis,
+                    by = c("phenotype","description","groupnum","group","color"), 
+                    suffixes = c(".x", ".y"))
+
+p <- my_scatter(pc_vs_psych_adj_psychosis) +
+  labs(x = "Primary care cohort", y = "Psychiatry cohort") 
+
+ggplotly(p)
+```
