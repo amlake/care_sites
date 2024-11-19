@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --ntasks=1
-#SBATCH --mem=240GB
+#SBATCH --mem=200GB
 #SBATCH --time=12:00:00
 #SBATCH --mail-user=allison.m.lake@vanderbilt.edu
 #SBATCH --mail-type=ALL

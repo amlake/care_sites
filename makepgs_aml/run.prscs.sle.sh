@@ -14,5 +14,5 @@ id=sle_eur_092324
 outdir=/data/davis_lab/allie/care_sites/data/makepgs_sle/${id}
 mkdir -p ${outdir}
 
-# sbatch -J SLE_CS --export=id=${id},outdir=${outdir},N=${N_eur},sst_path=${sst_eur},geno=${geno_eur},ancestry=eur /data/davis_lab/allie/care_sites/scripts/makepgs_aml/prs.cs.helper.sh
-sbatch -J SLE_SCORE --export=id=${id},outdir=${outdir},geno=${geno_eur},ancestry=eur,csx=0 /data/davis_lab/allie/care_sites/scripts/makepgs_aml/plink.score.helper.sh
+JOB1=$(sbatch --parsable -J SLE_CS --export=id=${id},outdir=${outdir},N=${N_eur},sst_path=${sst_eur},geno=${geno_eur},ancestry=eur /data/davis_lab/allie/care_sites/scripts/makepgs_aml/prs.cs.helper.sh)
+sbatch --dependency=afterok:$JOB1 -J SLE_SCORE --export=id=${id},outdir=${outdir},geno=${geno_eur},ancestry=eur,csx=0 /data/davis_lab/allie/care_sites/scripts/makepgs_aml/plink.score.helper.sh

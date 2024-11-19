@@ -96,7 +96,7 @@ sst[rsid == "rs60381075:147746:T:C", .(chr, pos, all_maf, alleleA, alleleB)] # a
 chisq <- qchisq(1 - sst$frequentist_add_wald_pvalue_1, 1)
 lambda_gc <- median(chisq) / qchisq(0.5, 1)
 lambda_gc <- round(lambda_gc, digits = 4)
-lambda_gc #  1.2858 # seems high
+lambda_gc #  1.2858 # seems high...
 
 #### Manhattan and QQ plots ####
 png("data/makepgs_sle/2017_Langefeld_SLE.filtered.manhattan.png")
@@ -171,9 +171,9 @@ n_distinct(sst_mapped$rsid.mega) # 687688
 
 #### Write out filtered summary stats for PRS-CS ####
 ## PRS-CS documentation: SNP is the rsID, A1 is the effect allele, A2 is the alternative allele, BETA/OR is the effect/odds ratio of the A1 allele, P is the p-value of the effect.
-## NOTE: I'm pretty sure below are the correct columns to use but it's hard to tell because ther results aren't matching up with the results reported in the paper (which were apparently generated using SNPGWA instead of SNPTEST?)
+## NOTE: I'm pretty sure below are the correct columns to use but it's hard to tell because the results aren't matching up with the results reported in the paper (which were apparently generated using SNPGWA instead of SNPTEST?)
 sst_out <- sst_mapped %>%
     select(SNP = rsid.mega, A1 = alleleB, A2 = alleleA, BETA = "frequentist_add_beta_1:add/sle=1", P = frequentist_add_wald_pvalue_1) %>%
     data.table()
 
-fwrite(sst, "data/makepgs_sle/2017_Langefeld_SLE.prscs_fmt.092324.tsv", sep = "\t")
+fwrite(sst_out, "data/makepgs_sle/2017_Langefeld_SLE.prscs_fmt.092324.tsv", sep = "\t")
