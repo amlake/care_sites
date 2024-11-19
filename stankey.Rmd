@@ -1,0 +1,64 @@
+---
+title: "Care site sankey plots"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  html_document:
+    toc: true
+    theme: united
+    toc_depth: 4
+---
+
+## setup and load data
+```{r setup, include = FALSE, message = FALSE, warning = FALSE, tidy = TRUE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE, tidy = TRUE, fig.width=6, fig.height=4)
+pacman::p_load(data.table, dplyr, foreach, PheWAS, ggplot2, plotly, ggpubr, scales, RColorBrewer, ggrepel, kableExtra, broom, networkD3, xlsx)
+setwd("/data/davis_lab/allie/care_sites/scripts")
+```
+
+https://rpubs.com/DragonflyStats/Sankey-networkD3
+
+```{r}
+## load care site map
+map <- fread("/data/davis_lab/allie/care_sites/data/CareSite_map_011024_release-1/CareSite_Map_Multispecialty_Long_Format_011024.csv")
+
+site_info <- read.xlsx("/data/davis_lab/allie/care_sites/data/CareSite_map_011024_release-1/CareSite_Map_011024.xlsx", 1) %>% 
+    select(care_site_id, x_dept_abbreviation, VisitCount) %>% 
+    data.table()
+
+map <- merge(map, site_info, by = "care_site_id")
+map[,care_site_id := as.character(care_site_id)]
+map <- map[SpecialtyLong != "Unclear"]
+setorder(map, -VisitCount)
+```
+
+## make plots
+### Care site -> specialty (zoom in on a few)
+```{r}
+map_test <- map[1:40]
+
+nodes <- unique(data.table(name1 = c(as.character(map_test$care_site_id), as.character(map_test$SpecialtyLong))))
+nodes[, id := 0:(.N-1)]
+nodes <- nodes[,.(id,name1)]
+nodes <- unique(merge(nodes, map_test[,.(care_site_id, x_dept_abbreviation)], by.x = "name1", by.y = "care_site_id", all.x = TRUE))
+nodes[,name2 := ifelse(is.na(x_dept_abbreviation), name1, x_dept_abbreviation)]
+setorder(nodes, id)
+
+links <- merge(map_test, nodes[,.(id, name1)], by.x = "care_site_id", by.y = "name1")
+setnames(links, "id", "source")
+links <- merge(links, nodes[,.(id, name1)], by.x = "SpecialtyLong", by.y = "name1")
+setnames(links, "id", "target")
+links$value <- 10
+
+nodes <- nodes[,.(id, name2)]
+links <- links[,.(source, target, value)]
+
+p <- sankeyNetwork(Links = links, Nodes = nodes, Source = "source",
+              Target = "target", Value = "value", NodeID = "name2",
+              units = "TWh", fontSize = 12, nodeWidth = 30)
+p
+```
+
+### Care site -> phecode -> specialty (divided into medical, surgical, other)
+```{r}
+
+```

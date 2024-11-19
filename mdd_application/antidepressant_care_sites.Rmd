@@ -1,0 +1,33 @@
+---
+title: "Antidepressant care sites"
+author: "Allie Lake"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  html_document:
+    toc: true
+    theme: united
+    toc_depth: 4
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+pacman::p_load(data.table, dplyr, ggplot2, PheWAS, openxlsx, foreach, ggthemr, ggrepel, RColorBrewer)
+options(scipen=999)
+
+ggthemr_reset()
+```
+
+## Load data
+```{r}
+map <- fread("/data/davis_lab/allie/care_sites/output/CareSiteMap_Multispecialty_Long_UPDATED_092424.csv")
+care_site_names <- read.xlsx("/data/davis_lab/allie/care_sites/output/CareSite_VisitDetailCount_UPDATED_092424.xlsx") %>%
+  select(care_site_id, care_site_name) %>% 
+  data.table() %>% 
+  unique()
+
+map <- merge(map, care_site_names, by = "care_site_id")
+```
+
+```{r}
+meds <- fread("/data/davis_lab/sealockj/projects/mdd_wbc_long/ad_response/add_antipsychotics/sd_pull_20230607/ad_response/sd_wide_antidepressants_merged_xtable_dbc_from_20230607_pull.csv")
+```

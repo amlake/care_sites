@@ -1,0 +1,224 @@
+---
+title: "Care sites application #2a: stratified depression PGS PheWAS"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output: html_document
+---
+
+## setup and load data
+```{r setup, include = FALSE, message = FALSE, warning = FALSE, tidy = TRUE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE, tidy = TRUE, fig.width=6, fig.height=4)
+pacman::p_load(data.table, dplyr, foreach, PheWAS, ggplot2, plotly, ggpubr, scales, RColorBrewer, ggrepel)
+setwd("/data/davis_lab/allie/care_sites/scripts")
+```
+
+### Load data compiled in compile_data.R
+```{r}
+## load care site map
+map <- fread("/data/davis_lab/allie/care_sites/output/CareSiteMap_Multispecialty_Long_UPDATED_092424.csv")
+
+## load covariates, PGS, and phecodes
+dat <- readRDS("/data/davis_lab/allie/care_sites/data/mdd_application/mega_eur_afr_covariates_pgs_phecodes_092424.Rds")
+setnames(dat, "pgs.dep.scale", "pgs.mdd.scale")
+dat <- dat[genetic_ancestry == "EUR"] # subset to EUR ancestry for now
+
+## visit info
+visit <- fread("/data/davis_lab/allie/care_sites/data/mdd_application/mega_grids_visits_cleaned_dates_non_null_sites.csv")
+```
+
+## construct primary care cohort and downsampled full cohort
+```{r}
+pc_sites <- unique(map[SpecialtyLong == "PrimaryCare", care_site_id])
+pc_grids <- unique(visit[care_site_id %in% pc_sites, GRID])
+dat[, pc_cohort := GRID %in% pc_grids]
+```
+
+### downsample full cohort to match primary care cohort
+```{r}
+n_downsample <- nrow(dat[pc_cohort == TRUE & genetic_ancestry == "EUR"])
+
+set.seed(123)
+grids_downsample <- sample(unique(dat$GRID), n_downsample) 
+dat[, downsample := GRID %in% grids_downsample]
+```
+
+```{r}
+table(dat$pc_cohort)
+table(dat$downsample)
+```
+
+## run phewas (EUR-ancestry cohort for now)
+```{r}
+phe_cols<- names(dat)[grepl("^[[:digit:]]", names(dat))]
+
+## phecode case counts
+# count number of cases per sex per phecode
+case_counts <- function(Sex) {
+  case_counts <- data.frame(count = unlist(lapply(dat[sex == Sex, phe_cols, with = F], function(phe) sum(phe, na.rm = T))))
+  case_counts$phecode <- rownames(case_counts)
+  case_counts <- data.table(case_counts[, c(2, 1)])
+  case_counts
+}
+
+counts_f <- case_counts("F")
+counts_m <- case_counts("M")
+counts_both <- merge(counts_f, counts_m, by = "phecode", suffixes = c(".f", ".m"))
+counts_both <- addPhecodeInfo(counts_both)
+counts_both <- counts_both[, .(phecode, description, group, count.f, count.m)]
+counts_both[, count.tot := count.f + count.m]
+
+## remove phecodes with <50 cases overall or <5 cases in one sex
+phe.keep <- counts_both[count.tot >= 50 & count.f >= 10 & count.m >= 10, phecode]
+
+## phewas function
+my_phewas <- function(dt, pred_col = "pgs.mdd.scale", covar = c("sex", "median_age", paste0("PC", 1:10))) {
+
+  message("Running PheWAS")
+  message("Predictor: ", paste(pred_col))
+  message("Covariates: ", paste(covar, collapse = ", "))
+
+  res <- phewas(
+      data = dt, phenotypes = phe.keep[!(phe.keep %in% covar)], predictors = pred_col,
+      covariates = covar, additive.genotypes = F, min.records = 50,
+      significance.threshold = "bonferroni"
+  )
+
+  res <- data.table(addPhecodeInfo(res, groupcolors = T, groups = T, groupnums = T))
+  setorder(res, p, -OR)
+  res[, ci.lower := exp(beta - 1.96 * SE)]
+  res[, ci.upper := exp(beta + 1.96 * SE)]
+
+  res <- res[!is.na(beta)]
+
+  res <- res %>% 
+    select(-predictor, -adjustment, -type, -HWE_p, -allele_freq, -n_no_snp) %>%
+    data.table()
+
+  return(res)
+}
+```
+
+```{r, eval = FALSE}
+res_phewas_full <- my_phewas(dat)
+saveRDS(res_phewas_full, "/data/davis_lab/allie/care_sites/output/mdd_application/mdd_pgs_phewas_full_cohort_111824.Rds")
+
+res_phewas_full_downsample <- my_phewas(dat[downsample == TRUE])
+saveRDS(res_phewas_full_downsample, "/data/davis_lab/allie/care_sites/output/mdd_application/mdd_pgs_phewas_full_cohort_downsample_111824.Rds")
+
+res_phewas_pc <- my_phewas(dat[pc_cohort == TRUE])
+saveRDS(res_phewas_pc, "/data/davis_lab/allie/care_sites/output/mdd_application/mdd_pgs_phewas_pc_cohort_111824.Rds")
+```
+
+### phewas controlling for depression phecode
+```{r, eval = FALSE}
+res_phewas_full <- my_phewas(dat, covar = c("sex", "median_age","296.2", paste0("PC", 1:10)))
+saveRDS(res_phewas_full, "/data/davis_lab/allie/care_sites/output/mdd_application/mdd_pgs_phewas_full_cohort_adj_mdd_111824.Rds")
+
+res_phewas_full_downsample <- my_phewas(dat[downsample == TRUE], covar = c("sex", "median_age","296.2", paste0("PC", 1:10)))
+saveRDS(res_phewas_full_downsample, "/data/davis_lab/allie/care_sites/output/mdd_application/mdd_pgs_phewas_full_cohort_downsample_adj_mdd_111824.Rds")
+
+res_phewas_pc <- my_phewas(dat[pc_cohort == TRUE], covar = c("sex", "median_age","296.2", paste0("PC", 1:10)))
+saveRDS(res_phewas_pc, "/data/davis_lab/allie/care_sites/output/mdd_application/mdd_pgs_phewas_pc_cohort_adj_mdd_111824.Rds")
+```
+
+```{r}
+res_phewas_full <- readRDS("/data/davis_lab/allie/care_sites/output/mdd_application/mdd_pgs_phewas_full_cohort_111824.Rds")
+res_phewas_full_downsample <- readRDS("/data/davis_lab/allie/care_sites/output/mdd_application/mdd_pgs_phewas_full_cohort_downsample_111824.Rds")
+res_phewas_pc <- readRDS("/data/davis_lab/allie/care_sites/output/mdd_application/mdd_pgs_phewas_pc_cohort_111824.Rds")
+
+res_phewas_full_adj_mdd <- readRDS("/data/davis_lab/allie/care_sites/output/mdd_application/mdd_pgs_phewas_full_cohort_adj_mdd_111824.Rds")
+res_phewas_full_downsample_adj_mdd <- readRDS("/data/davis_lab/allie/care_sites/output/mdd_application/mdd_pgs_phewas_full_cohort_downsample_adj_mdd_111824.Rds")
+res_phewas_pc_adj_mdd <- readRDS("/data/davis_lab/allie/care_sites/output/mdd_application/mdd_pgs_phewas_pc_cohort_adj_mdd_111824.Rds")
+```
+
+## phewas comparisons
+```{r}
+# create my own color: fixed mapping between group and color
+group_list <- c("circulatory system", "congenital anomalies", "dermatologic", "digestive", "endocrine/metabolic", "genitourinary", "hematopoietic", "infectious diseases", "injuries & poisonings", "mental disorders", "musculoskeletal", "neoplasms", "neurological", "pregnancy complications", "respiratory", "sense organs", "symptoms")
+color_groups <- data.frame(group = group_list, color = rep(brewer.pal(8, "Set2"), 3)[1:length(group_list)])
+
+my_scatter <- function(dt) {
+  r2 <- cor(dt$beta.x, dt$beta.y)^2
+
+  dt[, bonf_only_y := ifelse(bonferroni.x==FALSE & bonferroni.y==TRUE, TRUE, FALSE)]
+  dt[, bonf_only_x := ifelse(bonferroni.y==FALSE & bonferroni.x==TRUE, TRUE, FALSE)]
+
+  ggplot(dt, aes(x = beta.x, y = beta.y, color = group, fill = group, label = description)) +
+    geom_point() +
+    geom_point(data = dt[phenotype %in% c("071", "071.1")], color = "black", size = 3) +
+    geom_text(data = dt[phenotype %in% c("071", "071.1")], color = "black", size = 2) +
+    scale_color_manual(values = color_groups$color, breaks = color_groups$group) +
+    scale_fill_manual(values = color_groups$color, breaks = color_groups$group) +
+    geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
+    annotate("text", x = 0, y = 0.5, label = paste("r^2 =", round(r2, 2)), size = 3) +
+    theme_minimal() +
+    guides(fill="none")
+}
+```
+
+### full cohort vs primary care
+```{r}
+full_downsample_vs_pc <- merge(res_phewas_full_downsample, res_phewas_pc, 
+                    by = c("phenotype","description","groupnum","group","color"), 
+                    suffixes = c(".x", ".y"))
+
+p <- my_scatter(full_downsample_vs_pc) +
+  labs(title = "Full cohort vs primary care cohort", x = "Full cohort", y = "Primary care cohort") 
+
+ggplotly(p)
+```
+
+### full cohort vs primary care - adjusting for psychosis
+```{r}
+full_vs_pc_adj_mdd <- merge(res_phewas_full_downsample_adj_mdd, res_phewas_pc_adj_mdd, 
+                    by = c("phenotype","description","groupnum","group","color"), 
+                    suffixes = c(".x", ".y"))
+
+p <- my_scatter(full_vs_pc_adj_mdd) +
+  labs(x = "Full cohort", y = "Primary care cohort") 
+
+ggplotly(p)
+```
+
+## phewas controlling for CCC site
+```{r}
+ccc_grids <- unique(visit[care_site_id == 5023, GRID])
+dat[, ccc_cohort := GRID %in% ccc_grids]
+table(dat$ccc_cohort)
+```
+
+### run adjusted and stratified phewas
+```{r, eval = FALSE}
+res_phewas_full_adj_mdd_ccc  <- my_phewas(dat, covar = c("sex", "median_age","296.2", "ccc_cohort", paste0("PC", 1:10)))
+saveRDS(res_phewas_full_adj_mdd_ccc, "/data/davis_lab/allie/care_sites/output/mdd_application/mdd_pgs_phewas_full_cohort_adj_mdd_ccc_111824.Rds")
+
+res_phewas_full_adj_mdd_rm_ccc  <- my_phewas(dat[ccc_cohort==FALSE], covar = c("sex", "median_age","296.2", paste0("PC", 1:10)))
+saveRDS(res_phewas_full_adj_mdd_rm_ccc, "/data/davis_lab/allie/care_sites/output/mdd_application/mdd_pgs_phewas_full_cohort_adj_mdd_rm_ccc_111824.Rds")
+```
+
+```{r}
+res_phewas_full_adj_mdd_ccc <- readRDS("/data/davis_lab/allie/care_sites/output/mdd_application/mdd_pgs_phewas_full_cohort_adj_mdd_ccc_111824.Rds")
+res_phewas_full_adj_mdd_rm_ccc <- readRDS("/data/davis_lab/allie/care_sites/output/mdd_application/mdd_pgs_phewas_full_cohort_adj_mdd_rm_ccc_111824.Rds")
+```
+
+### comparison
+```{r}
+adj_ccc_comparison <- merge(res_phewas_full_adj_mdd, res_phewas_full_adj_mdd_ccc, 
+                    by = c("phenotype","description","groupnum","group","color"), 
+                    suffixes = c(".x", ".y"))
+
+p <- my_scatter(adj_ccc_comparison) +
+  labs(title = "", x = "Full cohort", y = "Full cohort, adjusting for CCC visit") 
+
+ggplotly(p)
+```
+
+```{r}
+rm_ccc_comparison <- merge(res_phewas_full_adj_mdd, res_phewas_full_adj_mdd_rm_ccc, 
+                    by = c("phenotype","description","groupnum","group","color"), 
+                    suffixes = c(".x", ".y"))
+
+p <- my_scatter(rm_ccc_comparison) +
+  labs(title = "", x = "Full cohort", y = "Full cohort, removing those with a CCC visit") 
+
+ggplotly(p)
+```
