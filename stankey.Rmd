@@ -11,7 +11,7 @@ output:
 ## setup and load data
 ```{r setup, include = FALSE, message = FALSE, warning = FALSE, tidy = TRUE}
 knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE, tidy = TRUE, fig.width=6, fig.height=4)
-pacman::p_load(data.table, dplyr, foreach, PheWAS, ggplot2, plotly, ggpubr, scales, RColorBrewer, ggrepel, kableExtra, broom, networkD3, xlsx)
+pacman::p_load(data.table, dplyr, foreach, PheWAS, ggplot2, plotly, ggpubr, scales, RColorBrewer, ggrepel, kableExtra, broom, networkD3, xlsx, stringr)
 setwd("/data/davis_lab/allie/care_sites/scripts")
 ```
 
@@ -29,14 +29,6 @@ map <- merge(map, site_visits, by = "care_site_id")
 map <- merge(map, site_phe, by = "care_site_id")
 map <- map[SpecialtyLong != "Unclear" & SpecialtyLong != "Administrative" & SpecialtyLong != "Phlebotomy" & SpecialtyLong !="Radiology"]
 map$care_site_id <- as.character(map$care_site_id)
-
-if (TRUE) {
-  setorder(map, -Visits_N)
-  map <- map[1:70]
-}
-
-setorder(map, pherank_1_category, SpecialtyLong)
-# setorder(map, SpecialtyLong, pherank_1_category)
 ```
 
 ### Rename a few care sites that have the same name
@@ -49,6 +41,7 @@ dups[,n_id_per_name := .N, by = care_site_name]
 dups[n_name_per_id>1] # none
 dups[n_id_per_name>1] # 26 of these
 ```
+
 ```{r}
 dups[, new_name := care_site_name]
 dups[n_id_per_name>1, new_name := paste0(care_site_name, "_", care_site_id)]
@@ -60,76 +53,108 @@ map[,new_name:=NULL]
 stopifnot(n_distinct(map$care_site_id) == n_distinct(map$care_site_name))
 ```
 
-## make plots
-### Care site --> specialty
-```{r}
-## create nodes for each care site and each specialty
-nodes <- unique(data.table(name = c(map$care_site_name, map$SpecialtyLong)))
-nodes[, id := 0:(.N-1)]
+### Select top 50 sites (by visit count) within each category (medical, surgical, other)
+```{r, eval = TRUE}
+Specialties_3group <- fread("/data/davis_lab/allie/care_sites/output/Figures/Specialties_NCareSites_Label_ANNOTATED.csv")
+map <- merge(map, Specialties_3group, by = "SpecialtyLong")
 
-## create links between care site notes and specialty nodes
-links <- merge(nodes[,.(id, name)], map[,.(care_site_name, SpecialtyLong)], by.x = "name", by.y = "care_site_name")
-setnames(links, "id", "source")
+setorder(map, -Visits_N)
+map[,visit_rank := 1:.N, by = Group]
 
-links <- merge(links, nodes[,.(id, name)], by.x = "SpecialtyLong", by.y = "name")
-setnames(links, "id", "target")
-
-links$value <- 10
-
-nodes <- nodes[,.(id, name)]
-links <- links[,.(source, target, value)]
-
-site_spec_links <- copy(links)
-
-p <- sankeyNetwork(Links = links, Nodes = nodes, Source = "source",
-                   Target = "target", Value = "value", NodeID = "name",
-                   units = "TWh", fontSize = 12, nodeWidth = 30)
-p
+map <- map[visit_rank <= 50]
 ```
 
+### Sort by phecode
+```{r}
+setorder(map, pherank_1_category, SpecialtyLong)
+# setorder(map, SpecialtyLong, pherank_1_category)
+```
+
+## make plot
 ### Care site --> phecode --> specialty (divided into medical, surgical, other)
 ```{r}
-## create nodes for phecodes
-phenodes <- map %>%
-  select(name = pherank_1_category) %>% 
-  data.table() %>% unique()
-phenodes[,id := nrow(nodes):(nrow(nodes)+.N-1)]
+sankey <- function(Map) {
+  ## create nodes for each care site and each specialty
+  nodes <- unique(data.table(name = c(Map$care_site_name, Map$SpecialtyLong)))
+  nodes[, id := 0:(.N-1)]
 
-nodes <- rbind(nodes,phenodes)
-  
-## create links between care site nodes and phecode nodes
-site_phe_links <- merge(nodes, map[,.(care_site_name, pherank_1_category)], by.x = "name", by.y = "care_site_name")
-setnames(site_phe_links, "id", "source")
+  ## create links between care site notes and specialty nodes
+  links <- merge(nodes[,.(id, name)], Map[,.(care_site_name, SpecialtyLong)], by.x = "name", by.y = "care_site_name")
+  setnames(links, "id", "source")
 
-site_phe_links <- merge(site_phe_links, nodes[,.(id,name)], by.x = "pherank_1_category", by.y = "name")
-setnames(site_phe_links, "id", "target")
+  links <- merge(links, nodes[,.(id, name)], by.x = "SpecialtyLong", by.y = "name")
+  setnames(links, "id", "target")
 
-site_phe_links$value <- 10
-site_phe_links <- site_phe_links[,.(source, target, value)]
+  links$value <- 10
 
-links <- rbind(links, site_phe_links)
+  nodes <- nodes[,.(id, name)]
+  links <- links[,.(source, target, value)]
 
-## create links between phecode nodes and specialties
-phe_spec_links <- merge(nodes, map[,.(SpecialtyLong, pherank_1_category)], by.x = "name", by.y = "pherank_1_category")
-setnames(phe_spec_links, "id", "source")
+  site_spec_links <- copy(links)
 
-phe_spec_links <- merge(phe_spec_links, nodes[,.(id,name)], by.x = "SpecialtyLong", by.y = "name")
-setnames(phe_spec_links, "id", "target")
+  ## create nodes for phecodes
+  phenodes <- Map %>%
+    select(name = pherank_1_category) %>% 
+    data.table() %>% unique()
+  phenodes[,id := nrow(nodes):(nrow(nodes)+.N-1)]
 
-phe_spec_links$value <- 50
-phe_spec_links <- phe_spec_links[,.(source, target, value)]
+  nodes <- rbind(nodes,phenodes)
+    
+  ## create links between care site nodes and phecode nodes
+  site_phe_links <- merge(nodes, Map[,.(care_site_name, pherank_1_category)], by.x = "name", by.y = "care_site_name")
+  setnames(site_phe_links, "id", "source")
 
-links <- rbind(links, phe_spec_links)
+  site_phe_links <- merge(site_phe_links, nodes[,.(id,name)], by.x = "pherank_1_category", by.y = "name")
+  setnames(site_phe_links, "id", "target")
 
-if (FALSE) {
-  # change care site ID names to blank strings
-  nodes[id %in% 0:(n_distinct(map$care_site_id)-1), name := ""]
+  site_phe_links$value <- 10
+  site_phe_links <- site_phe_links[,.(source, target, value)]
+
+  links <- rbind(links, site_phe_links)
+
+  ## create links between phecode nodes and specialties
+  phe_spec_links <- merge(nodes, Map[,.(SpecialtyLong, pherank_1_category)], by.x = "name", by.y = "pherank_1_category")
+  setnames(phe_spec_links, "id", "source")
+
+  phe_spec_links <- merge(phe_spec_links, nodes[,.(id,name)], by.x = "SpecialtyLong", by.y = "name")
+  setnames(phe_spec_links, "id", "target")
+
+  phe_spec_links$value <- 50
+  phe_spec_links <- phe_spec_links[,.(source, target, value)]
+
+  links <- rbind(links, phe_spec_links)
+
+  # capitalize phecode categories
+  nodes[name %in% map$pherank_1_category, name := str_to_title(name)]
+
+  # manual abbreviation of some clinic names to save space
+  nodes[, name := gsub("OPHTHALMOLOGY","OPHTH",name)]
+  nodes[, name := gsub("COMPREHENSIVE","COMP",name)]
+  nodes[, name := gsub("ORTHOPAEDICS","ORTHO",name)]
+  nodes[, name := gsub("ORTHOPEDICS","ORTHO",name)]
+  nodes[, name := gsub("ZZZ-","",name)]
+  nodes[, name := gsub("OTOLARYNGOLOGY","OTOLARYNG",name)]
+  nodes[, name := gsub("_[[:digit:]]*","",name)]
+
+  # cut off names at N characters
+  char_max <- 25
+  nodes[, name := substr(name,1,char_max)]
+  nodes[nchar(name) == char_max, name := paste0(trimws(name),"...")]
+
+  if (FALSE) {
+    # change care site ID names to blank strings
+    nodes[id %in% 0:(n_distinct(Map$care_site_id)-1), name := ""]
+  }
+
+  p <- sankeyNetwork(Links = rbind(site_phe_links,phe_spec_links), Nodes = nodes, Source = "source",
+                    Target = "target", Value = "value", NodeID = "name",
+                    units = "TWh", fontSize = 12, nodeWidth = 20)
+  return(p)
 }
-
-p <- sankeyNetwork(Links = rbind(site_phe_links,phe_spec_links), Nodes = nodes, Source = "source",
-                   Target = "target", Value = "value", NodeID = "name",
-                   units = "TWh", fontSize = 12, nodeWidth = 20)
-p
 ```
 
-
+```{r}
+sankey(map[Group == "Medical"])
+sankey(map[Group == "Surgical"])
+sankey(map[Group == "Other"])
+```
