@@ -209,7 +209,7 @@ caresite_plot_df <- care_site_summary %>%
   select(care_site_id, care_site_name, MappedSpecialty = specialty, n_mdd_visits = mdd_in, perc_of_mdd_visits = freq_mdd) %>%
   filter(n_mdd_visits >=100) %>%
   group_by(MappedSpecialty) %>%
-  mutate(N = n()) %>% 
+  mutate(N = n()) %>%  ## number of data points per specialty, for plotting purposes
   data.table()
 
 caresite_plot_df[, N := N+2]
@@ -220,31 +220,22 @@ Specialties_3group <- fread("/data/davis_lab/allie/care_sites/output/Figures/Spe
   data.table()
 
 Specialties_3group <- merge(Specialties_3group, unique(caresite_plot_df[,.(MappedSpecialty, N)]), by = "MappedSpecialty")
+Specialties_3group$Group <- factor(Specialties_3group$Group, levels = c("Medical", "Surgical", "Other"))
 
-# # Define colors for each group and alternate light/dark shades
-# group_colors <- c("Medical_light" = "#a6cee3", "Medical_dark" = "#1f78b4",
-#                   "Surgical_light" = "#b2df8a", "Surgical_dark" = "#33a02c",
-#                   "Other_light" = "#fb9a99", "Other_dark" = "#e31a1c")
-
+# Create group to alternate light/dark shades
+group_colors <- c("Medical_light" = "#a6cee3", "Medical_dark" = "#1f78b4",
+                    "Surgical_light" = "#b2df8a", "Surgical_dark" = "#33a02c",
+                    "Other_light" = "#fb9a99", "Other_dark" = "#e31a1c")
 
 # Create a base value for each specialty
 specialty_base <- Specialties_3group %>%
-  mutate(Group = factor(Group, levels = c("Medical", "Surgical", "Other"))) %>%
   arrange(Group, MappedSpecialty) %>%
   distinct(MappedSpecialty, N) %>%
-  mutate(base_value = cumsum(N) - N) %>% 
-  data.table()
+  mutate(base_value = cumsum(N) - N)
 
 # Order the care sites
-caresite_plot_df <- caresite_plot_df  %>% 
-  left_join(Specialties_3group %>% select(MappedSpecialty, Group), by=c("MappedSpecialty")) %>%
-  group_by(MappedSpecialty) %>%
-  ungroup() %>%
-  mutate(Group = factor(Group, levels = c("Medical", "Surgical", "Other"))) %>%
-  arrange(Group, MappedSpecialty, desc(N)) %>%
-  filter(!is.na(Group)) %>% 
-  left_join(specialty_base %>% select(MappedSpecialty, base_value), by = c("MappedSpecialty"))
-
+caresite_plot_df <- merge(caresite_plot_df, Specialties_3group[,.(MappedSpecialty, Group)], by = "MappedSpecialty")
+caresite_plot_df <- merge(caresite_plot_df, specialty_base[,.(MappedSpecialty, base_value)], by = "MappedSpecialty")
 setDT(caresite_plot_df)
 setorder(caresite_plot_df, MappedSpecialty, care_site_name)
 caresite_plot_df[, id := seq_len(.N), by = MappedSpecialty]
@@ -263,24 +254,24 @@ midpoint_labels <- caresite_plot_df %>%
   summarize(midpoint = median(RowNumber)) %>%
   ungroup()
 
-N_spec <- n_distinct(caresite_plot_df$MappedSpecialty)
-pal <- rev(rep(brewer.pal(n = 8, name = "Set2"),3)[1:N_spec])
+if (FALSE) {
+  N_spec <- n_distinct(caresite_plot_df$MappedSpecialty)
+  pal <- rev(rep(brewer.pal(n = 8, name = "Set2"),6)[1:N_spec])
+  spec_order <- unique(caresite_plot_df[,.(MappedSpecialty)])
+  spec_order$Color <- pal
+  caresite_plot_df <- merge(caresite_plot_df, spec_order, by = "MappedSpecialty")
+}
 
-spec_order <- caresite_plot_df %>% arrange(RowNumber) %>% distinct(MappedSpecialty) %>%
-  mutate(Color =  pal)
-
-caresite_plot_df <- merge(caresite_plot_df, spec_order, by = "MappedSpecialty")
-
-p <- ggplot(caresite_plot_df, aes(x = RowNumber, y = perc_of_mdd_visits, fill = Color)) +
+p <- ggplot(caresite_plot_df, aes(x = RowNumber, y = perc_of_mdd_visits, fill = Group_Shade)) +
   geom_bar(stat = "identity", color = "black") +
-  geom_label_repel(data = caresite_plot_df %>% filter(perc_of_mdd_visits >= 0.005) %>% arrange(desc(n_mdd_visits)) %>% group_by(MappedSpecialty) %>% slice(1:5), 
+  geom_label_repel(data = caresite_plot_df %>% filter(perc_of_mdd_visits >= 0.01) %>% arrange(desc(n_mdd_visits)) %>% group_by(MappedSpecialty) %>% slice(1:5), 
                   aes(label = care_site_name),
-                  size = 2,
+                  size = 3,
                   box.padding = 0.5, point.padding = 0.5,
                   vjust = 0.5, hjust = 0.5, max.overlaps = 20) +
   scale_x_continuous(breaks = midpoint_labels$midpoint, labels = midpoint_labels$MappedSpecialty) +
-  # scale_fill_manual(values = group_colors) +
-  scale_fill_identity()  +
+  scale_fill_manual(values = group_colors) +
+  # scale_fill_identity()  +
   theme_minimal(base_family = "Helvetica") +
   theme(text = element_text(size = 10), 
         axis.text.x = element_text(size = 7, angle = 45, hjust = 1), 
@@ -288,7 +279,7 @@ p <- ggplot(caresite_plot_df, aes(x = RowNumber, y = perc_of_mdd_visits, fill = 
         plot.title = element_text(hjust = 0.5),
         axis.title.x = element_text(face = "bold"), axis.title.y = element_text(face = "bold"),
         legend.position = "none", 
-        panel.grid.major.x = element_blank(), panel.grid.minor.x = element_blank()) + 
+        panel.grid.major.x = element_blank(), panel.grid.minor.x = element_blank()) +
   labs(x = "Care site", y = "Proportion of index MDD visits")
 
 pdf("/data/davis_lab/allie/care_sites/output/mdd_application/earliest_mdd_site_counts_bar.pdf", width = 10, height = 7)
@@ -296,3 +287,6 @@ print(p)
 dev.off()
 ```
 
+```{r}
+print(p)
+```
