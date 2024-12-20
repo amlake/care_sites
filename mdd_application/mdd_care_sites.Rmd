@@ -1,5 +1,5 @@
 ---
-title: "MDD care sites"
+title: "dep care sites"
 author: "Allie Lake"
 date: "`r format(Sys.Date(), '%B %d, %Y')`"
 output:
@@ -17,7 +17,6 @@ options(scipen=999)
 ggthemr_reset()
 ```
 
-## Load data
 ```{r}
 map <- fread("/data/davis_lab/allie/care_sites/output/CareSiteMap_Multispecialty_Long_UPDATED_111524.csv")
 care_site_names <- read.xlsx("/data/davis_lab/allie/care_sites/output/CareSite_VisitDetailCount_UPDATED_111524.xlsx") %>%
@@ -32,12 +31,13 @@ map <- merge(map, care_site_names, by = "care_site_id")
 phecode_map_full <- data.table(unique(rbind(phecode_map_icd10, phecode_map)))
 ```
 
+## Extract dep ICD codes
 ```{r load_icd, eval=FALSE}
 ## load all icd codes from the 2023 SD pull
 icd <- readRDS("/data/davis_lab/allie/commonly_used/20230607_sd_pull_x_codes_icd.Rds")
 dep_codes <- phecode_map_full[phecode %in% c("296.2", "296.22")]
 
-## restrict to icd codes for MDD or depression
+## restrict to icd codes for dep or depression
 icd_dep <- unique(icd[concept_code %in% dep_codes$code, .(GRID, entry_date, entry_datetime, 
                                                           vocabulary_id, concept_code, concept_name, 
                                                           visit_occurrence_id, item_position, age_at_event)])
@@ -46,7 +46,7 @@ saveRDS(icd_dep, "/data/davis_lab/allie/care_sites/data/mdd_application/20230607
 ```
 
 ```{r}
-## load depression/MDD icd codes
+## load depression/dep icd codes
 icd_dep <- readRDS("/data/davis_lab/allie/care_sites/data/mdd_application/20230607_sd_pull_x_codes_icd_depression.Rds") %>% 
   select(GRID, entry_date, entry_datetime, vocabulary_id, concept_code, concept_name, visit_occurrence_id, age_at_event) %>% 
   data.table() %>% 
@@ -55,171 +55,120 @@ icd_dep <- readRDS("/data/davis_lab/allie/care_sites/data/mdd_application/202306
 icd_dep$entry_datetime <- as_datetime(icd_dep$entry_datetime)
 
 table(icd_dep$vocabulary_id)
-icd_dep$vocabulary_id <- gsub("CM", "", icd_dep$vocabulary_id)
-table(icd_dep$vocabulary_id)
-
-## restrict to MDD only (296.22)
-mdd_codes <- phecode_map_full[phecode == "296.22"]
-setnames(mdd_codes, "code", "concept_code")
-table(mdd_codes$vocabulary_id)
-mdd_codes$vocabulary_id <- gsub("CM", "", mdd_codes$vocabulary_id)
-mdd_codes <- unique(mdd_codes)
-table(mdd_codes$vocabulary_id)
-
-icd_mdd <- merge(mdd_codes, icd_dep, by = c("concept_code", "vocabulary_id"))
-icd_mdd[,code_index := .I] # define this variable for bookkeeping purposes
 ```
 
-## Get proportion of each care site among all visits mapping to sites with defined specialties (baseline frequencies)
-```{r, eval = F}
-## load all visit data from 2023 SD pull that map to a defined care site (not Unclear or Administrative)
-## (generated in compile_data.R)
-vdat <- readRDS("/data/davis_lab/allie/care_sites/data/mdd_application/20230607_sd_pull_visit_occurrence_defined_sites.Rds")
-
-vdat[,n_per_site := length(unique(.SD$visit_occurrence_id)), by = care_site_id]
-vdat[,n_per_specialty := length(unique(.SD$visit_occurrence_id)), by = SpecialtyLong]
-
-n_tot <- length(unique(vdat$visit_occurrence_id)) # 46422711 (this is the total number of visits mapping to a care site with a defined specialty)
-
-care_site_summary <- unique(vdat[, .(care_site_id, care_site_name, SpecialtyLong, n_per_site)])
-care_site_summary[,freq_per_site := n_per_site / n_tot]
-
-specialty_summary <- unique(vdat[, .(SpecialtyLong, n_per_specialty)])
-specialty_summary[,freq_per_specialty := n_per_specialty / n_tot]
-
-saveRDS(care_site_summary, "/data/davis_lab/allie/care_sites/data/mdd_application/care_site_frequencies.Rds")
-saveRDS(specialty_summary, "/data/davis_lab/allie/care_sites/data/mdd_application/specialty_frequencies.Rds")
-```
-
-## Select each individual's *earliest* MDD code
+## Select each individual's *earliest* depression code
 ```{r}
-icd_mdd[, earliest_code := min(entry_datetime), by = GRID]
-icd_mdd_earliest <- unique(icd_mdd[entry_datetime == earliest_code, .(GRID,entry_date,entry_datetime,visit_occurrence_id)])
+icd_dep[, earliest_code := min(entry_datetime), by = GRID]
+icd_dep_earliest <- unique(icd_dep[entry_datetime == earliest_code, .(GRID,entry_date,entry_datetime,visit_occurrence_id)])
 
-icd_mdd_earliest[,visit_ct := .N, by = GRID]
-table(icd_mdd_earliest$visit_ct)
+icd_dep_earliest[,visit_ct := .N, by = GRID]
+table(icd_dep_earliest$visit_ct)
+
+n_distinct(icd_dep_earliest$GRID) # 203,904 total individuals with dep code
+nrow(icd_dep_earliest) # 208,802 total entries
 ```
 
-### Map MDD codes to care sites by visit_occurrence_id
-```{r, eval = F}
-## load all visit data from 2023 SD pull that map to a defined care site (not Unclear or Administrative)
-## (generated in compile_data.R)
-vdat <- readRDS("/data/davis_lab/allie/care_sites/data/mdd_application/20230607_sd_pull_visit_occurrence_defined_sites.Rds")
-
-## map earliest MDD icd codes to care sites via visit_occurrence_id
-icd_mdd_visits <- merge(icd_mdd_earliest, vdat, by = c("GRID","visit_occurrence_id"))
-saveRDS(icd_mdd_visits, "/data/davis_lab/allie/care_sites/data/mdd_application/20230607_sd_pull_visit_occurrence_earliest_mdd_icd_joined_by_visit_id.Rds")
-```
-
-```{r}
-## load file generated above
-icd_mdd_visits <- readRDS("/data/davis_lab/allie/care_sites/data/mdd_application/20230607_sd_pull_visit_occurrence_earliest_mdd_icd_joined_by_visit_id.Rds")
-
-icd_mdd_visits[, visit_ct := length(unique(.SD$visit_occurrence_id)), by = GRID]
-icd_mdd_visits[, visit_entry_ct := .N, by = GRID] # accounts for multiple care sites per visit
-table(icd_mdd_visits$visit_ct)
-table(icd_mdd_visits$visit_entry_ct)
-```
-
-Even after restricting to the earliest MDD code for each individual and mapping to defined care sites, there are still some individuals with multiple MDD codes. 
-We will keep mutliple entries per individual for now.
-```{r}
-n_distinct(icd_mdd_earliest$GRID)
-n_distinct(icd_mdd_visits$GRID)
-
-paste0("Proportion of individuals with at least one (earliest) MDD code mapping to a visit with a defined specialty: ",
- round(n_distinct(icd_mdd_visits$GRID) / n_distinct(icd_mdd_earliest$GRID), 3))
-```
-
-## Get proportions of earliest MDD visits that are documented in each care site
-```{r}
-icd_mdd_visits[,n_per_site := length(unique(.SD$visit_occurrence_id)), by = care_site_id]
-icd_mdd_visits[,n_per_specialty := length(unique(.SD$visit_occurrence_id)), by = SpecialtyLong]
-
-n_tot_mdd <- length(unique(icd_mdd_visits$visit_occurrence_id)) # this is the total number of MDD visits mapping to a care site with a defined specialty
-
-care_site_summary_mdd <- unique(icd_mdd_visits[, .(care_site_id, care_site_name, SpecialtyLong, n_per_site)])
-care_site_summary_mdd[,freq_per_site := n_per_site / n_tot_mdd]
-
-specialty_summary_mdd <- unique(icd_mdd_visits[, .(SpecialtyLong, n_per_specialty)])
-specialty_summary_mdd[,freq_per_specialty := n_per_specialty / n_tot_mdd]
-
-setnames(care_site_summary_mdd, "n_per_site", "n_mdd")
-setnames(care_site_summary_mdd, "freq_per_site", "freq_mdd")
-setnames(specialty_summary_mdd, "n_per_specialty", "n_mdd")
-setnames(specialty_summary_mdd, "freq_per_specialty", "freq_mdd")
-```
-
-### Combine with baseline frequencies (not actually using these for now)
-```{r}
-care_site_summary <- readRDS("/data/davis_lab/allie/care_sites/data/mdd_application/care_site_frequencies.Rds") %>%
-  rename(n_tot = n_per_site, freq_tot = freq_per_site) %>%
-  data.table()
-
-specialty_summary <- readRDS("/data/davis_lab/allie/care_sites/data/mdd_application/specialty_frequencies.Rds") %>% 
-  rename(n_tot = n_per_specialty, freq_tot = freq_per_specialty) %>%
-  data.table()
-
-N <- 46422711 # (this is the total number of visits mapping to a care site with a defined specialty)
-N_mdd <- n_tot_mdd # 468107 (this is the total number of MDD visits mapping to a care site with a defined specialty)
-
-care_site_summary <- merge(care_site_summary, care_site_summary_mdd, by = c("care_site_id", "care_site_name", "SpecialtyLong"))
-specialty_summary <- merge(specialty_summary, specialty_summary_mdd, by = "SpecialtyLong")
-
-care_site_summary <- care_site_summary %>% 
-  select(care_site_id, care_site_name, specialty = SpecialtyLong, tot_in = n_tot, mdd_in = n_mdd, freq_tot, freq_mdd) %>%
-  data.table()
-
-care_site_summary[,tot_out := N - tot_in]
-care_site_summary[,mdd_out := N_mdd - mdd_in]
-
-specialty_summary <- specialty_summary %>% 
-  select(specialty = SpecialtyLong, tot_in = n_tot, mdd_in = n_mdd, freq_tot, freq_mdd) %>%
-  data.table()
-
-specialty_summary[,tot_out := N - tot_in]
-specialty_summary[,mdd_out := N_mdd - mdd_in]
-```
-
-### Chi-square tests (not using for now)
+### Map depression codes to care sites
+Try mapping by visit_occurrence_id AND by date.
 ```{r, eval=FALSE}
-care_site_summary <- foreach(i = 1:nrow(care_site_summary), .combine = rbind) %do% { 
-  row <- care_site_summary[i,]
-  mat <- matrix(c(row$tot_in, row$tot_out, row$mdd_in, row$mdd_out), nrow = 2)
-  test <- chisq.test(mat)
-  row$chisq.stat <- test$statistic
-  row$chisq.pval <- test$p.value
-  row
-}
+## load all visit data from 2023 SD pull that map to a defined care site (not missing, Unclear, or Administrative)
+## (generated in compile_data.R)
+vdat <- readRDS("/data/davis_lab/allie/care_sites/data/mdd_application/20230607_sd_pull_visit_occurrence_defined_sites.Rds")
+n_distinct(vdat$GRID) # 3,083,596 total individuals with a visit mapped to a "defined" care site 
 
-specialty_summary <- foreach(i = 1:nrow(specialty_summary), .combine = rbind) %do% { 
-  row <- specialty_summary[i,]
-  mat <- matrix(c(row$tot_in, row$tot_out, row$mdd_in, row$mdd_out), nrow = 2)
-  test <- chisq.test(mat)
-  row$chisq.stat <- test$statistic
-  row$chisq.pval <- test$p.value
-  row
-}
+## get the total individual count per care site and per specialty
+vdat[,cs_n_grid := n_distinct(.SD$GRID), by = care_site_id]
+vdat[,spec_n_grid := n_distinct(.SD$GRID), by = SpecialtyLong]
+cs_grid_counts <- unique(vdat[,.(care_site_id, care_site_name, cs_n_grid, SpecialtyLong)])
+spec_grid_counts <- unique(vdat[,.(SpecialtyLong, spec_n_grid)])
+setorder(cs_grid_counts, -cs_n_grid)
+setorder(spec_grid_counts, -spec_n_grid)
+saveRDS(cs_grid_counts, "/data/davis_lab/allie/care_sites/data/mdd_application/20230607_sd_pull_defined_sites_individual_counts_by_site.Rds")
+saveRDS(spec_grid_counts, "/data/davis_lab/allie/care_sites/data/mdd_application/20230607_sd_pull_defined_sites_individual_counts_by_specialty.Rds")
+
+## map earliest depression icd codes to care sites via visit_occurrence_id
+icd_dep_visits_by_id <- merge(icd_dep_earliest, vdat, by = c("GRID","visit_occurrence_id"))
+saveRDS(icd_dep_visits_by_id, "/data/davis_lab/allie/care_sites/data/mdd_application/20230607_sd_pull_visit_occurrence_earliest_dep_icd_joined_by_visit_id.Rds")
+
+## map earliest depression icd codes to care sites via date
+icd_dep_visits_by_date <- merge(icd_dep_earliest, vdat, by = "GRID", allow.cartesian = TRUE)
+icd_dep_visits_by_date <- icd_dep_visits_by_date[entry_date >= visit_start_date & entry_date <= visit_end_date]
+saveRDS(icd_dep_visits_by_date, "/data/davis_lab/allie/care_sites/data/mdd_application/20230607_sd_pull_visit_occurrence_earliest_dep_icd_joined_by_date.Rds")
+
+n_distinct(icd_dep_visits_by_id$GRID) # 139082 individuals with earliest depression code mapping to a visit with a DEFINED CARE SITE by date (68.2% of total with depression)
+n_distinct(icd_dep_visits_by_date$GRID) # 150206 individuals with earliest dep code mapping to a visit with a DEFINED CARE SITE by date (73.7% of total with depression)
+```
+Will map by date 1) because there are more individuals and 2) for consistency with the antidepressant analysis.
+
+```{r}
+## load file generated above (joined by date)
+icd_dep_visits <- readRDS("/data/davis_lab/allie/care_sites/data/mdd_application/20230607_sd_pull_visit_occurrence_earliest_dep_icd_joined_by_date.Rds")
+head(icd_dep_visits)
+nrow(icd_dep_visits) # 212406
+n_distinct(icd_dep_visits$GRID) # 150206
+```
+
+```{r}
+## retain unique entries (by GRID, date of ICD code, and care site id)
+## there will be duplicates if a care site is mapped to multiple specialties
+icd_dep_visits <- unique(icd_dep_visits[,.(GRID,entry_date,care_site_id,care_site_name,SpecialtyLong,cs_n_grid,spec_n_grid)])
+nrow(icd_dep_visits) # 186677
+n_distinct(icd_dep_visits$GRID) # 150206
+
+nrow(unique(icd_dep_visits[,.(GRID,entry_date,care_site_id)])) # 176580 - number of distinct GRID/care site combos
+nrow(unique(icd_dep_visits[,.(GRID,entry_date,care_site_id,care_site_name)])) # 176580 - number of distinct GRID/care site combos (same as above)
+nrow(unique(icd_dep_visits[,.(GRID,SpecialtyLong)])) # 181395 - number of distinct GRID/specialty combos
+```
+
+Even after restricting to the earliest dep code for each individual and mapping to defined care sites, there are still many individuals with depression codes mapping to multiple different care sites on the same day.
+We will keep mutliple entries per individual, but will use the number of unique individuals as the denominator in the care site and specialty frequency calculations.
+Otherwise, we would be double-counting individuals with multiple care site visits on the same day. That might bias the results if individuals with dep codes are more likely to have multiple care site visits on the same day, or if certain care sites contribute disproportionately to the total (e.g., radiology or phlebotomy visits, which often co-occur with visits to other sites).
+
+```{r}
+paste0("Out of all patients with a depression code, for what % of them does their earliest code map to a visit with a defined specialty? ",
+ round((n_distinct(icd_dep_visits$GRID) / n_distinct(icd_dep_earliest$GRID))*100, 2), "%")
+```
+
+
+## Get proportions of individuals with dep codes at each care site and specialty
+Normalize by total individual count per care site or specialty.
+```{r}
+N_dep <- n_distinct(icd_dep_visits$GRID) # 150206 - this will be the denominator for the depression-specific frequencies
+
+icd_dep_visits[,n_dep_per_site := n_distinct(.SD$GRID), by = care_site_id]
+icd_dep_visits[,n_dep_per_specialty := n_distinct(.SD$GRID), by = SpecialtyLong]
+
+care_site_summary_dep <- unique(icd_dep_visits[, .(care_site_id, care_site_name, SpecialtyLong, n_dep_per_site, cs_n_grid)])
+care_site_summary_dep[,freq_dep_per_site := n_dep_per_site / N_dep]
+care_site_summary_dep[,freq_dep_per_site_norm := n_dep_per_site / N_dep / cs_n_grid]
+
+specialty_summary_dep <- unique(icd_dep_visits[, .(SpecialtyLong, n_dep_per_specialty, spec_n_grid)])
+specialty_summary_dep[,freq_dep_per_specialty := n_dep_per_specialty / N_dep]
+specialty_summary_dep[,freq_dep_per_specialty_norm := n_dep_per_specialty / N_dep / spec_n_grid]
 ```
 
 ## Plots
+TODO: create versions of plots using normalized frequencies AND raw frequencies
+TODO: modularize plotting functions
 ```{r}
-## restrict to care sites with >=100 MDD visits
-caresite_plot_df <- care_site_summary %>% 
-  select(care_site_id, care_site_name, MappedSpecialty = specialty, n_mdd_visits = mdd_in, perc_of_mdd_visits = freq_mdd) %>%
-  filter(n_mdd_visits >=100) %>%
-  group_by(MappedSpecialty) %>%
+## restrict to care sites with >=100 depression visits
+caresite_plot_df <- care_site_summary_dep %>% 
+  select(care_site_id, care_site_name, SpecialtyLong, n_dep_per_site, freq_dep_per_site, freq_dep_per_site_norm) %>%
+  filter(n_dep_per_site >=500) %>%
+  group_by(SpecialtyLong) %>%
   mutate(N = n()) %>%  ## number of data points per specialty, for plotting purposes
   data.table()
 
 caresite_plot_df[, N := N+2]
 
-Specialties_3group <- fread("/data/davis_lab/allie/care_sites/output/Figures/Specialties_NCareSites_Label_ANNOTATED.csv") %>% 
-  filter(SpecialtyLong %in% caresite_plot_df$MappedSpecialty) %>% 
-  select(MappedSpecialty = SpecialtyLong, Group) %>%
+## TODO: confirm with John that this is the correct annotation file
+Specialties_3group <- fread("/data/davis_lab/allie/care_sites/output/Figures/Descriptives/Specialties_NCareSites_Label_ANNOTATED.csv") %>% 
+  filter(SpecialtyLong %in% caresite_plot_df$SpecialtyLong) %>% 
+  select(SpecialtyLong, Group) %>%
   data.table()
 
-Specialties_3group <- merge(Specialties_3group, unique(caresite_plot_df[,.(MappedSpecialty, N)]), by = "MappedSpecialty")
+Specialties_3group <- merge(Specialties_3group, unique(caresite_plot_df[,.(SpecialtyLong, N)]), by = "SpecialtyLong")
 Specialties_3group$Group <- factor(Specialties_3group$Group, levels = c("Medical", "Surgical", "Other"))
 
 # Create group to alternate light/dark shades
@@ -227,49 +176,48 @@ group_colors <- c("Medical_light" = "#a6cee3", "Medical_dark" = "#1f78b4",
                     "Surgical_light" = "#b2df8a", "Surgical_dark" = "#33a02c",
                     "Other_light" = "#fb9a99", "Other_dark" = "#e31a1c")
 
-# Create a base value for each specialty
-specialty_base <- Specialties_3group %>%
-  arrange(Group, MappedSpecialty) %>%
-  distinct(MappedSpecialty, N) %>%
-  mutate(base_value = cumsum(N) - N)
+# Create a base x-axis value for each specialty
+specialty_base <- Specialties_3group
+setorder(specialty_base, Group, SpecialtyLong)
+specialty_base[, base_value := cumsum(N) - N]
 
-# Order the care sites
-caresite_plot_df <- merge(caresite_plot_df, Specialties_3group[,.(MappedSpecialty, Group)], by = "MappedSpecialty")
-caresite_plot_df <- merge(caresite_plot_df, specialty_base[,.(MappedSpecialty, base_value)], by = "MappedSpecialty")
+# Order the care sites by specialty and then by care site name
+caresite_plot_df <- merge(caresite_plot_df, Specialties_3group[,.(SpecialtyLong, Group)], by = "SpecialtyLong")
+caresite_plot_df <- merge(caresite_plot_df, specialty_base[,.(SpecialtyLong, base_value)], by = "SpecialtyLong")
 setDT(caresite_plot_df)
-setorder(caresite_plot_df, MappedSpecialty, care_site_name)
-caresite_plot_df[, id := seq_len(.N), by = MappedSpecialty]
-caresite_plot_df[, id := rowid(MappedSpecialty)]
+setorder(caresite_plot_df, SpecialtyLong, care_site_name)
+caresite_plot_df[, id := seq_len(.N), by = SpecialtyLong]
+caresite_plot_df[, id := rowid(SpecialtyLong)]
 caresite_plot_df[,RowNumber := base_value + id]
 
 caresite_plot_df <- caresite_plot_df %>%
-  group_by(MappedSpecialty) %>%
+  group_by(SpecialtyLong) %>%
   mutate(Group_Shade = ifelse(cur_group_id() %% 2 == 0, paste(Group, "light", sep = "_"), paste(Group, "dark", sep = "_"))) %>%
   mutate(Specialty_midpoint = median(RowNumber)) %>% 
   ungroup() %>% 
   data.table()
 
 midpoint_labels <- caresite_plot_df %>%
-  group_by(MappedSpecialty) %>%
+  group_by(SpecialtyLong) %>%
   summarize(midpoint = median(RowNumber)) %>%
   ungroup()
 
 if (FALSE) {
-  N_spec <- n_distinct(caresite_plot_df$MappedSpecialty)
+  N_spec <- n_distinct(caresite_plot_df$SpecialtyLong)
   pal <- rev(rep(brewer.pal(n = 8, name = "Set2"),6)[1:N_spec])
-  spec_order <- unique(caresite_plot_df[,.(MappedSpecialty)])
+  spec_order <- unique(caresite_plot_df[,.(SpecialtyLong)])
   spec_order$Color <- pal
-  caresite_plot_df <- merge(caresite_plot_df, spec_order, by = "MappedSpecialty")
+  caresite_plot_df <- merge(caresite_plot_df, spec_order, by = "SpecialtyLong")
 }
 
-p <- ggplot(caresite_plot_df, aes(x = RowNumber, y = perc_of_mdd_visits, fill = Group_Shade)) +
+p <- ggplot(caresite_plot_df, aes(x = RowNumber, y = freq_dep_per_site, fill = Group_Shade)) +
   geom_bar(stat = "identity", color = "black") +
-  geom_label_repel(data = caresite_plot_df %>% filter(perc_of_mdd_visits >= 0.01) %>% arrange(desc(n_mdd_visits)) %>% group_by(MappedSpecialty) %>% slice(1:5), 
+  geom_label_repel(data = caresite_plot_df %>% filter(freq_dep_per_site >= 0.01) %>% arrange(desc(n_dep_per_site)) %>% group_by(SpecialtyLong) %>% slice(1:5), 
                   aes(label = care_site_name),
                   size = 3,
                   box.padding = 0.5, point.padding = 0.5,
                   vjust = 0.5, hjust = 0.5, max.overlaps = 20) +
-  scale_x_continuous(breaks = midpoint_labels$midpoint, labels = midpoint_labels$MappedSpecialty) +
+  scale_x_continuous(breaks = midpoint_labels$midpoint, labels = midpoint_labels$SpecialtyLong) +
   scale_fill_manual(values = group_colors) +
   # scale_fill_identity()  +
   theme_minimal(base_family = "Helvetica") +
@@ -280,9 +228,9 @@ p <- ggplot(caresite_plot_df, aes(x = RowNumber, y = perc_of_mdd_visits, fill = 
         axis.title.x = element_text(face = "bold"), axis.title.y = element_text(face = "bold"),
         legend.position = "none", 
         panel.grid.major.x = element_blank(), panel.grid.minor.x = element_blank()) +
-  labs(x = "Care site", y = "Proportion of index MDD visits")
+  labs(x = "Care site", y = "Proportion of index depression diagnoses")
 
-pdf("/data/davis_lab/allie/care_sites/output/mdd_application/earliest_mdd_site_counts_bar.pdf", width = 10, height = 7)
+pdf("/data/davis_lab/allie/care_sites/output/mdd_application/earliest_dep_site_counts_bar_mapped_by_date.pdf", width = 10, height = 7)
 print(p)
 dev.off()
 ```

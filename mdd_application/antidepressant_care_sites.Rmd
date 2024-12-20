@@ -17,6 +17,10 @@ options(scipen=999)
 ggthemr_reset()
 ```
 
+TODO:
+* Update denominator to be consistent with mdd_care_sites.Rmd
+* Generally update for consistency with mdd_care_sites.Rmd
+
 ## Load data
 ```{r}
 map <- fread("/data/davis_lab/allie/care_sites/output/CareSiteMap_Multispecialty_Long_UPDATED_111524.csv")

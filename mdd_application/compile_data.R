@@ -5,6 +5,16 @@ setwd("/data/davis_lab/allie/care_sites")
 ## load demographics
 dat <- fread("/data/davis_lab/allie/generate_phecode_tables/covariate_files/20230607_sd_wide_covariates_121023.txt")
 
+## load care sites specialty map
+map <- fread("/data/davis_lab/allie/care_sites/output/CareSiteMap_Multispecialty_Long_UPDATED_111524.csv")
+
+care_site_names <- read.xlsx("/data/davis_lab/allie/care_sites/output/CareSite_VisitDetailCount_UPDATED_111524.xlsx") %>%
+  select(care_site_id, care_site_name) %>%
+  data.table() %>%
+  unique()
+
+map <- merge(map, care_site_names, by = "care_site_id")
+
 ## load genotyping covariates
 covar_geno_eur <- fread("/data/davis_lab/shared/genotype_data/biovu/processed/imputed/best_guess/MEGA/MEGA_recalled/20200518_MEGA.GRID.RACE.ETH.GEN.batch.PCs.covariates_EU.filt1.txt")
 covar_geno_afr <- fread("/data/davis_lab/shared/genotype_data/biovu/processed/imputed/best_guess/MEGA/MEGA_recalled/20200515_MEGA.GRID.RACE.ETH.GEN.batch.PCs.covariates_AA.filt1.txt")
@@ -52,31 +62,19 @@ dat <- merge(dat, phecodes, by = "GRID")
 ## save
 saveRDS(dat, "data/mega_eur_afr_covariates_pgs_phecodes_092424.Rds")
 
-#### Compile visit data for MEGA cohort ####
-visit <- fread("/data/davis_lab/shared/phenotype_data/biovu/delivered_data/sd_wide_pull/20230607_pull/20230607_sd_pull_visit_occurrence_all.txt.gz")
-
-## fix missing visit end dates
-visit[is.na(visit_end_date), visit_end_date := visit_start_date]
-
-## remove visits with care_site_id = 0 (null care site)
-visit <- visit[care_site_id != 0]
-
-## remove unneeded columns
-visit <- unique(visit[, .(GRID, visit_start_date, visit_end_date, care_site_id)])
-
-## restrict to MEGA cohort
-visit <- visit[GRID %in% dat$GRID]
-
-## save
-fwrite(visit, "data/mega_grids_visits_cleaned_dates_non_null_sites.csv")
-
-
 #### Compile visit data for full SD cohort ####
-visit <- fread("/data/davis_lab/shared/phenotype_data/biovu/delivered_data/sd_wide_pull/20230607_pull/20230607_sd_pull_visit_occurrence_all.txt.gz")
+visit_full_sd <- fread("/data/davis_lab/shared/phenotype_data/biovu/delivered_data/sd_wide_pull/20230607_pull/20230607_sd_pull_visit_occurrence_all.txt.gz")
 
-visit <- visit %>% 
-  select(GRID, visit_occurrence_id, visit_start_date, visit_end_date, visit_concept_id, care_site_id)
-visit[visit_concept_id == 0, visit_type := 'unknown']
+class(visit_full_sd$visit_occurrence_id) # integer
+range(visit_full_sd$visit_occurrence_id) # 1-112444321 (don't need to worry about int64 issues)
+
+visit <- copy(visit_full_sd)
+
+visit <- visit %>%
+  select(GRID, visit_occurrence_id, visit_start_date, visit_end_date, visit_concept_id, care_site_id) %>% 
+  as.data.table()
+
+visit[visit_concept_id == 0, visit_type := "unknown"]
 visit[visit_concept_id == 9201, visit_type := "IP"]
 visit[visit_concept_id == 9202, visit_type := "OP"]
 visit[visit_concept_id == 9203, visit_type := "ER"]
@@ -90,12 +88,22 @@ n_distinct(visit$visit_occurrence_id) # 70672052
 
 saveRDS(visit, "/data/davis_lab/allie/care_sites/data/mdd_application/20230607_sd_pull_visit_occurrence_unique.Rds")
 
-nrow(visit[care_site_id!=0]) / nrow(visit) # 77% of visits have a non-null care site
+nrow(visit[care_site_id != 0]) / nrow(visit) # 77.4% of visits have a non-null care site
 
-visit_sites <- merge(visit[care_site_id!=0], map, by = "care_site_id", allow.cartesian = T)
-visit_sites <- visit_sites[SpecialtyLong!="Unclear" & SpecialtyLong!="Administrative"]
+visit_sites <- merge(visit[care_site_id != 0], map, by = "care_site_id", allow.cartesian = T)
+visit_sites <- visit_sites[SpecialtyLong != "Unclear" & SpecialtyLong != "Administrative"]
 
-n_distinct(visit_sites$visit_occurrence_id) / nrow(visit) # 66% of visits have a care site with a defined specialty
-n_distinct(visit_sites$visit_occurrence_id) / nrow(visit[care_site_id!=0]) # 85% of visits with a non-null care site have a defined specialty
+n_distinct(visit_sites$visit_occurrence_id) / nrow(visit) # 65.8% of visits have a care site with a defined specialty
+n_distinct(visit_sites$visit_occurrence_id) / nrow(visit[care_site_id != 0]) # 85.0% of visits with a non-null care site have a defined specialty
+
+n_distinct(visit_sites$visit_occurrence_id) # 46471048
+nrow(visit_sites) # 51751207
 
 saveRDS(visit_sites, "/data/davis_lab/allie/care_sites/data/mdd_application/20230607_sd_pull_visit_occurrence_defined_sites.Rds")
+
+#### Compile visit data for MEGA cohort ####
+## restrict to MEGA cohort
+visit_sites_mega <- visit_sites[GRID %in% dat$GRID]
+
+## save
+saveRDS(visit_sites_mega, "/data/davis_lab/allie/care_sites/data/mdd_application/20230607_sd_pull_mega_grids_visit_occurrence_defined_sites.Rds")
