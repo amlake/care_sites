@@ -1,5 +1,5 @@
 ---
-title: "dep care sites"
+title: "Depression care sites"
 author: "Allie Lake"
 date: "`r format(Sys.Date(), '%B %d, %Y')`"
 output:
@@ -11,10 +11,11 @@ output:
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-pacman::p_load(data.table, dplyr, ggplot2, PheWAS, openxlsx, foreach, ggthemr, ggrepel, RColorBrewer, lubridate)
+pacman::p_load(data.table, dplyr, ggplot2, PheWAS, openxlsx, foreach, ggthemr, ggrepel, ggpubr, RColorBrewer, lubridate)
 options(scipen=999)
-
 ggthemr_reset()
+
+source("/data/davis_lab/allie/care_sites/scripts/mdd_application/manhattan_bar.R")
 ```
 
 ```{r}
@@ -31,13 +32,13 @@ map <- merge(map, care_site_names, by = "care_site_id")
 phecode_map_full <- data.table(unique(rbind(phecode_map_icd10, phecode_map)))
 ```
 
-## Extract dep ICD codes
+## Extract depression ICD codes
 ```{r load_icd, eval=FALSE}
 ## load all icd codes from the 2023 SD pull
 icd <- readRDS("/data/davis_lab/allie/commonly_used/20230607_sd_pull_x_codes_icd.Rds")
 dep_codes <- phecode_map_full[phecode %in% c("296.2", "296.22")]
 
-## restrict to icd codes for dep or depression
+## restrict to icd codes for depression
 icd_dep <- unique(icd[concept_code %in% dep_codes$code, .(GRID, entry_date, entry_datetime, 
                                                           vocabulary_id, concept_code, concept_name, 
                                                           visit_occurrence_id, item_position, age_at_event)])
@@ -46,7 +47,7 @@ saveRDS(icd_dep, "/data/davis_lab/allie/care_sites/data/mdd_application/20230607
 ```
 
 ```{r}
-## load depression/dep icd codes
+## load depression icd codes
 icd_dep <- readRDS("/data/davis_lab/allie/care_sites/data/mdd_application/20230607_sd_pull_x_codes_icd_depression.Rds") %>% 
   select(GRID, entry_date, entry_datetime, vocabulary_id, concept_code, concept_name, visit_occurrence_id, age_at_event) %>% 
   data.table() %>% 
@@ -65,11 +66,11 @@ icd_dep_earliest <- unique(icd_dep[entry_datetime == earliest_code, .(GRID,entry
 icd_dep_earliest[,visit_ct := .N, by = GRID]
 table(icd_dep_earliest$visit_ct)
 
-n_distinct(icd_dep_earliest$GRID) # 203,904 total individuals with dep code
+n_distinct(icd_dep_earliest$GRID) # 203,904 total individuals with depression codes
 nrow(icd_dep_earliest) # 208,802 total entries
 ```
 
-### Map depression codes to care sites
+## Map depression codes to care sites
 Try mapping by visit_occurrence_id AND by date.
 ```{r, eval=FALSE}
 ## load all visit data from 2023 SD pull that map to a defined care site (not missing, Unclear, or Administrative)
@@ -97,7 +98,7 @@ icd_dep_visits_by_date <- icd_dep_visits_by_date[entry_date >= visit_start_date 
 saveRDS(icd_dep_visits_by_date, "/data/davis_lab/allie/care_sites/data/mdd_application/20230607_sd_pull_visit_occurrence_earliest_dep_icd_joined_by_date.Rds")
 
 n_distinct(icd_dep_visits_by_id$GRID) # 139082 individuals with earliest depression code mapping to a visit with a DEFINED CARE SITE by date (68.2% of total with depression)
-n_distinct(icd_dep_visits_by_date$GRID) # 150206 individuals with earliest dep code mapping to a visit with a DEFINED CARE SITE by date (73.7% of total with depression)
+n_distinct(icd_dep_visits_by_date$GRID) # 150206 individuals with earliest depression code mapping to a visit with a DEFINED CARE SITE by date (73.7% of total with depression)
 ```
 Will map by date 1) because there are more individuals and 2) for consistency with the antidepressant analysis.
 
@@ -121,9 +122,9 @@ nrow(unique(icd_dep_visits[,.(GRID,entry_date,care_site_id,care_site_name)])) # 
 nrow(unique(icd_dep_visits[,.(GRID,SpecialtyLong)])) # 181395 - number of distinct GRID/specialty combos
 ```
 
-Even after restricting to the earliest dep code for each individual and mapping to defined care sites, there are still many individuals with depression codes mapping to multiple different care sites on the same day.
+Even after restricting to the earliest depression code for each individual and mapping to defined care sites, there are still many individuals with depression codes mapping to multiple different care sites on the same day.
 We will keep mutliple entries per individual, but will use the number of unique individuals as the denominator in the care site and specialty frequency calculations.
-Otherwise, we would be double-counting individuals with multiple care site visits on the same day. That might bias the results if individuals with dep codes are more likely to have multiple care site visits on the same day, or if certain care sites contribute disproportionately to the total (e.g., radiology or phlebotomy visits, which often co-occur with visits to other sites).
+Otherwise, we would be double-counting individuals with multiple care site visits on the same day. That might bias the results if individuals with depression codes are more likely to have multiple care site visits on the same day, or if certain care sites contribute disproportionately to the total (e.g., radiology or phlebotomy visits, which often co-occur with visits to other sites).
 
 ```{r}
 paste0("Out of all patients with a depression code, for what % of them does their earliest code map to a visit with a defined specialty? ",
@@ -131,7 +132,7 @@ paste0("Out of all patients with a depression code, for what % of them does thei
 ```
 
 
-## Get proportions of individuals with dep codes at each care site and specialty
+## Get proportions of individuals with depression codes at each care site and specialty
 Normalize by total individual count per care site or specialty.
 ```{r}
 N_dep <- n_distinct(icd_dep_visits$GRID) # 150206 - this will be the denominator for the depression-specific frequencies
@@ -149,88 +150,32 @@ specialty_summary_dep[,freq_dep_per_specialty_norm := n_dep_per_specialty / N_de
 ```
 
 ## Plots
-TODO: create versions of plots using normalized frequencies AND raw frequencies
-TODO: modularize plotting functions
 ```{r}
-## restrict to care sites with >=100 depression visits
+## reformat data frame for plotting
 caresite_plot_df <- care_site_summary_dep %>% 
-  select(care_site_id, care_site_name, SpecialtyLong, n_dep_per_site, freq_dep_per_site, freq_dep_per_site_norm) %>%
-  filter(n_dep_per_site >=500) %>%
-  group_by(SpecialtyLong) %>%
-  mutate(N = n()) %>%  ## number of data points per specialty, for plotting purposes
+  filter(SpecialtyLong != "Phlebotomy" & SpecialtyLong != "Radiology"  & SpecialtyLong != "Research") %>%
+  filter(n_dep_per_site >=100) %>%
+  select(care_site_id, care_site_name, 
+    specialty = SpecialtyLong, n_phe_per_site = n_dep_per_site, 
+    freq_phe_per_site = freq_dep_per_site, freq_phe_per_site_norm = freq_dep_per_site_norm) %>%
   data.table()
 
-caresite_plot_df[, N := N+2]
+p1 <- caresite_manhattan_bar(caresite_plot_df, points = T, flip = F) +
+  labs(x = "", y = "Frequency of depression codes per care site\n")
 
-## TODO: confirm with John that this is the correct annotation file
-Specialties_3group <- fread("/data/davis_lab/allie/care_sites/output/Figures/Descriptives/Specialties_NCareSites_Label_ANNOTATED.csv") %>% 
-  filter(SpecialtyLong %in% caresite_plot_df$SpecialtyLong) %>% 
-  select(SpecialtyLong, Group) %>%
+## create a second version of the plot, normalizing by total individual count per care site
+caresite_plot_df_norm <- caresite_plot_df %>%
+  select(-freq_phe_per_site) %>% 
+  rename(freq_phe_per_site = freq_phe_per_site_norm) %>% 
+  mutate(freq_phe_per_site = freq_phe_per_site * 10000) %>%
   data.table()
 
-Specialties_3group <- merge(Specialties_3group, unique(caresite_plot_df[,.(SpecialtyLong, N)]), by = "SpecialtyLong")
-Specialties_3group$Group <- factor(Specialties_3group$Group, levels = c("Medical", "Surgical", "Other"))
+p2 <- caresite_manhattan_bar(caresite_plot_df_norm, points = T, flip = T) +
+  labs(x = "", y = "Frequency of depression codes per care site\n(normalized by per-site individual count)")
 
-# Create group to alternate light/dark shades
-group_colors <- c("Medical_light" = "#a6cee3", "Medical_dark" = "#1f78b4",
-                    "Surgical_light" = "#b2df8a", "Surgical_dark" = "#33a02c",
-                    "Other_light" = "#fb9a99", "Other_dark" = "#e31a1c")
+p <- ggarrange(p1, p2, ncol=1,nrow=2)
 
-# Create a base x-axis value for each specialty
-specialty_base <- Specialties_3group
-setorder(specialty_base, Group, SpecialtyLong)
-specialty_base[, base_value := cumsum(N) - N]
-
-# Order the care sites by specialty and then by care site name
-caresite_plot_df <- merge(caresite_plot_df, Specialties_3group[,.(SpecialtyLong, Group)], by = "SpecialtyLong")
-caresite_plot_df <- merge(caresite_plot_df, specialty_base[,.(SpecialtyLong, base_value)], by = "SpecialtyLong")
-setDT(caresite_plot_df)
-setorder(caresite_plot_df, SpecialtyLong, care_site_name)
-caresite_plot_df[, id := seq_len(.N), by = SpecialtyLong]
-caresite_plot_df[, id := rowid(SpecialtyLong)]
-caresite_plot_df[,RowNumber := base_value + id]
-
-caresite_plot_df <- caresite_plot_df %>%
-  group_by(SpecialtyLong) %>%
-  mutate(Group_Shade = ifelse(cur_group_id() %% 2 == 0, paste(Group, "light", sep = "_"), paste(Group, "dark", sep = "_"))) %>%
-  mutate(Specialty_midpoint = median(RowNumber)) %>% 
-  ungroup() %>% 
-  data.table()
-
-midpoint_labels <- caresite_plot_df %>%
-  group_by(SpecialtyLong) %>%
-  summarize(midpoint = median(RowNumber)) %>%
-  ungroup()
-
-if (FALSE) {
-  N_spec <- n_distinct(caresite_plot_df$SpecialtyLong)
-  pal <- rev(rep(brewer.pal(n = 8, name = "Set2"),6)[1:N_spec])
-  spec_order <- unique(caresite_plot_df[,.(SpecialtyLong)])
-  spec_order$Color <- pal
-  caresite_plot_df <- merge(caresite_plot_df, spec_order, by = "SpecialtyLong")
-}
-
-p <- ggplot(caresite_plot_df, aes(x = RowNumber, y = freq_dep_per_site, fill = Group_Shade)) +
-  geom_bar(stat = "identity", color = "black") +
-  geom_label_repel(data = caresite_plot_df %>% filter(freq_dep_per_site >= 0.01) %>% arrange(desc(n_dep_per_site)) %>% group_by(SpecialtyLong) %>% slice(1:5), 
-                  aes(label = care_site_name),
-                  size = 3,
-                  box.padding = 0.5, point.padding = 0.5,
-                  vjust = 0.5, hjust = 0.5, max.overlaps = 20) +
-  scale_x_continuous(breaks = midpoint_labels$midpoint, labels = midpoint_labels$SpecialtyLong) +
-  scale_fill_manual(values = group_colors) +
-  # scale_fill_identity()  +
-  theme_minimal(base_family = "Helvetica") +
-  theme(text = element_text(size = 10), 
-        axis.text.x = element_text(size = 7, angle = 45, hjust = 1), 
-        axis.text.y = element_text(size = 8), 
-        plot.title = element_text(hjust = 0.5),
-        axis.title.x = element_text(face = "bold"), axis.title.y = element_text(face = "bold"),
-        legend.position = "none", 
-        panel.grid.major.x = element_blank(), panel.grid.minor.x = element_blank()) +
-  labs(x = "Care site", y = "Proportion of index depression diagnoses")
-
-pdf("/data/davis_lab/allie/care_sites/output/mdd_application/earliest_dep_site_counts_bar_mapped_by_date.pdf", width = 10, height = 7)
+pdf("/data/davis_lab/allie/care_sites/output/mdd_application/earliest_dep_site_counts_bar_mapped_by_date_miami_points.pdf", width = 11, height = 8.5)
 print(p)
 dev.off()
 ```
