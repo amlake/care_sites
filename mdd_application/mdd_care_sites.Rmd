@@ -33,7 +33,7 @@ phecode_map_full <- data.table(unique(rbind(phecode_map_icd10, phecode_map)))
 ```
 
 ## Extract depression ICD codes
-```{r load_icd, eval=FALSE}
+```{r load_icd, eval = FALSE}
 ## load all icd codes from the 2023 SD pull
 icd <- readRDS("/data/davis_lab/allie/commonly_used/20230607_sd_pull_x_codes_icd.Rds")
 dep_codes <- phecode_map_full[phecode %in% c("296.2", "296.22")]
@@ -58,13 +58,10 @@ icd_dep$entry_datetime <- as_datetime(icd_dep$entry_datetime)
 table(icd_dep$vocabulary_id)
 ```
 
-## Select each individual's *earliest* depression code
+## Select each patient's *earliest* depression code
 ```{r}
 icd_dep[, earliest_code := min(entry_datetime), by = GRID]
 icd_dep_earliest <- unique(icd_dep[entry_datetime == earliest_code, .(GRID,entry_date,entry_datetime,visit_occurrence_id)])
-
-icd_dep_earliest[,visit_ct := .N, by = GRID]
-table(icd_dep_earliest$visit_ct)
 
 n_distinct(icd_dep_earliest$GRID) # 203,904 total individuals with depression codes
 nrow(icd_dep_earliest) # 208,802 total entries
@@ -72,7 +69,7 @@ nrow(icd_dep_earliest) # 208,802 total entries
 
 ## Map depression codes to care sites
 Try mapping by visit_occurrence_id AND by date.
-```{r, eval=FALSE}
+```{r, eval = FALSE}
 ## load all visit data from 2023 SD pull that map to a defined care site (not missing, Unclear, or Administrative)
 ## (generated in compile_data.R)
 vdat <- readRDS("/data/davis_lab/allie/care_sites/data/mdd_application/20230607_sd_pull_visit_occurrence_defined_sites.Rds")
@@ -131,7 +128,6 @@ paste0("Out of all patients with a depression code, for what % of them does thei
  round((n_distinct(icd_dep_visits$GRID) / n_distinct(icd_dep_earliest$GRID))*100, 2), "%")
 ```
 
-
 ## Get proportions of individuals with depression codes at each care site and specialty
 Normalize by total individual count per care site or specialty.
 ```{r}
@@ -149,6 +145,25 @@ specialty_summary_dep[,freq_dep_per_specialty := n_dep_per_specialty / N_dep]
 specialty_summary_dep[,freq_dep_per_specialty_norm := n_dep_per_specialty / N_dep / spec_n_grid]
 ```
 
+### Make supplemental tables
+```{r}
+care_site_supp <- copy(care_site_summary_dep)
+names(care_site_supp) <- c("care_site_id", "care_site_name", "specialty", "n_depression_patients_per_site", "n_total_patients_per_site", "prop_depression_patients_per_site","prop_depression_patients_per_site_normalized")
+setorder(care_site_supp, -n_depression_patients_per_site)
+
+specialty_supp <- copy(specialty_summary_dep)
+names(specialty_supp) <- c("specialty", "n_depression_patients_per_specialty", "n_total_patients_per_specialty", "prop_depression_patients_per_specialty","prop_depression_patients_per_specialty_normalized")
+setorder(specialty_supp, -n_depression_patients_per_specialty)
+
+## write to excel
+wb <- createWorkbook()
+addWorksheet(wb, "Care Site Summary")
+writeData(wb, "Care Site Summary", care_site_supp)
+addWorksheet(wb, "Specialty Summary")
+writeData(wb, "Specialty Summary", specialty_supp)
+saveWorkbook(wb, "/data/davis_lab/allie/care_sites/output/mdd_application/SupplementalTable_depression_care_site_specialty_summary.xlsx", overwrite = TRUE)
+```
+
 ## Plots
 ```{r}
 ## reformat data frame for plotting
@@ -161,7 +176,9 @@ caresite_plot_df <- care_site_summary_dep %>%
   data.table()
 
 p1 <- caresite_manhattan_bar(caresite_plot_df, points = T, flip = F) +
-  labs(x = "", y = "Frequency of depression codes per care site\n")
+  labs(x = "", y = "Proportion of diagnoses per care site\n") +
+  scale_y_continuous(breaks = seq(0,0.075,0.005), limits = c(0,0.075)) +
+  theme(panel.grid.minor.y = element_blank())
 
 ## create a second version of the plot, normalizing by total individual count per care site
 caresite_plot_df_norm <- caresite_plot_df %>%
@@ -171,7 +188,8 @@ caresite_plot_df_norm <- caresite_plot_df %>%
   data.table()
 
 p2 <- caresite_manhattan_bar(caresite_plot_df_norm, points = T, flip = T) +
-  labs(x = "", y = "Frequency of depression codes per care site\n(normalized by per-site individual count)")
+  labs(x = "", y = "Proportion of diagnoses per care site\n(normalized by per-site individual count)") +
+  scale_y_reverse(breaks = rev(seq(0,0.035,0.005)), limits = c(0.035,0))
 
 p <- ggarrange(p1, p2, ncol=1,nrow=2)
 
