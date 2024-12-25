@@ -1,0 +1,237 @@
+---
+title: "Care sites MDD application: precision phenotyping"
+author: "Allie Lake"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  html_document:
+    toc: true
+    theme: united
+    toc_depth: 4
+---
+
+```{r setup, include = FALSE, message = FALSE, warning = FALSE, tidy = TRUE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE, tidy = TRUE, fig.width=6, fig.height=4)
+pacman::p_load(data.table, dplyr, foreach, PheWAS, ggplot2, plotly, ggthemr, ggpubr, scales, RColorBrewer, ggrepel, kableExtra, broom, openxlsx)
+# setwd("/data/davis_lab/allie/care_sites/scripts")
+ggthemr_reset()
+```
+
+## Define functions
+```{r}
+#### OR formatting function ####
+or_format_func <- function(OR, ci_lower, ci_upper) {
+  return(
+    paste0(sprintf(
+      "%s (%s-%s)",
+      formatC(OR, format = "f", digits = 2),
+      formatC(ci_lower, format = "f", digits = 2),
+      formatC(ci_upper, format = "f", digits = 2)
+    ))
+  )
+}
+
+#### Function to process logistic regression output ####
+process_logit <- function(mdl) {
+  output <- tidy(mdl)
+  output$OR <- exp(output$estimate)
+  output$ci.lower <- exp(output$estimate-1.96*output$std.error)
+  output$ci.upper <- exp(output$estimate+1.96*output$std.error)
+  output
+}
+
+
+#### Rounding function for p-values ####
+rounding_func <- function(xx) {
+  if (is.na(xx)) {
+    return(NA)
+  } else if (xx < 1e-3) {
+    # y <- formatC(xx, format = "e", digits = 2)
+    y <- "<0.001"
+  } else if (round(xx,2) <0.01) { # <0.01 and ≥0.001 -> 3 digits 
+    y <- formatC(xx, format = "f", digits = 3)
+  } else { # ≥0.01 -> 2 digits
+    y <- formatC(xx, format = "f", digits = 2)
+  }
+  return(as.character(y))
+}
+```
+
+## Load data
+NOTE: the variable names below use "MDD", but the phenotype is actually "depression" (phecode 296.2).
+```{r}
+## load care site map
+map <- fread("/data/davis_lab/allie/care_sites/output/CareSiteMap_Multispecialty_Long_UPDATED_111524.csv")
+
+## load covariates, PGS, and phecodes
+## see compile_data.R for details on how this file was created
+dat <- readRDS("/data/davis_lab/allie/care_sites/data/mega_eur_afr_covariates_pgs_phecodes_092424.Rds")
+dat <- dat[genetic_ancestry == "EUR"]
+
+## remove phecode columns except for depression
+setnames(dat, "296.22", "mdd")
+setnames(dat, "296.2", "dep")
+
+## check that everyone who is a case for 296.22 is also a case for 296.2
+stopifnot(nrow(dat[dep == 0 & mdd == 1]) == 0)
+
+phe_cols<- names(dat)[grepl("^[[:digit:]]", names(dat))]
+dat <- dat[,-phe_cols,with=F]
+dat[, mdd := NULL]
+setnames(dat,"dep","mdd")
+
+## recode pheno columns
+dat$mdd <- as.numeric(dat$mdd)
+dat[is.na(mdd), mdd := -9]
+
+## remove unneeded columns
+dat[, pgs.scz.scale := NULL]
+dat[, pgs.bd.scale := NULL]
+dat[, pgs.sle.scale := NULL]
+
+head(dat)
+```
+
+```{r}
+## load visit info
+visit <- readRDS("/data/davis_lab/allie/care_sites/data/mdd_application/20230607_sd_pull_mega_grids_visit_occurrence_defined_sites.Rds")
+```
+
+## Depression definitions
+* Definition 1: standard depression phecode (296.2)
+* Definition 2: 
+  * case = has depression phecode (296.2) + ≥1 psych site visit (i.e., has depression and has ever seen a psychiatrist)
+  * control = no depression phecode (296.2)
+  * excluded = has depression phecode (296.2) but no psych site visit or is N/A for depression phecode
+```{r}
+psych_sites <- unique(map[SpecialtyLong == "Psychiatry", care_site_id])
+psych_grids <- unique(visit[care_site_id %in% psych_sites, GRID])
+dat[, psych_cohort := as.numeric(GRID %in% psych_grids)]
+
+dat[, mdd_psych_site := ifelse(mdd==1 & psych_cohort==1, 1,
+                                ifelse(mdd==0,0,-9))]
+
+dat[, mdd_pheno := ifelse(mdd_psych_site == 1, "mdd+site", ifelse(mdd == 1, "mdd_no_site", ifelse(mdd == 0, "control", "excluded")))]  
+head(dat)                 
+```
+
+```{r}
+dat %>% 
+  group_by(mdd) %>%
+  summarise(n = n())
+```
+
+```{r}
+dat %>% 
+  group_by(mdd_psych_site) %>%
+  summarise(n = n())
+```
+
+```{r}
+dat %>% 
+  group_by(mdd_pheno) %>%
+  summarise(n = n())
+```
+
+## Raw PGS comparison
+```{r}
+my_comparisons <- list( c("Control", "Code only"), c("Control", "Code + psych. visit"), c("Code only", "Code + psych. visit") )
+
+dat_plot <-  dat %>% 
+  filter(mdd_pheno != "excluded") %>%
+  mutate(mdd_pheno = factor(mdd_pheno, levels = c("control", "mdd_no_site", "mdd+site"), labels = c("Control", "Code only", "Code + psych. visit"))) %>% 
+  mutate(mdd_pheno = as.character(mdd_pheno)) %>%
+  data.table()
+
+p <- dat_plot %>%
+  ggplot(aes(x = mdd_pheno, fill = mdd_pheno, pgs.dep.scale)) +
+  geom_violin() +
+  geom_boxplot(width = 0.3) +
+  labs(x = "Phenotype", y = "Scaled depression PGS", fill = "") +
+  stat_compare_means(comparisons = my_comparisons, method = "t.test", label = "p.signif") +
+  theme_bw() +
+  theme(legend.position = "none")
+
+pdf("/data/davis_lab/allie/care_sites/output/mdd_application/mdd_raw_pgs_comparison.pdf", width = 6, height = 5)
+print(p)
+dev.off()
+```
+
+```{r}
+print(p)
+rm(p)
+```
+
+## PGS regression analysis
+```{r}
+mdl_mdd <- glm(mdd ~ pgs.dep.scale + sex + median_age + PC1+PC2+PC3+PC4+PC5+PC6+PC7+PC8+PC9+PC10, 
+           data = dat[mdd!=-9], family = "binomial")
+
+res_mdd <- process_logit(mdl_mdd) %>% 
+  mutate(pheno = "MDD", 
+         n_total = nrow(dat[mdd!=-9]), 
+         n_cases = nrow(dat[mdd==1]), 
+         n_controls = nrow(dat[mdd==0]))
+
+mdl_mdd_psych_site <- glm(mdd_psych_site ~ pgs.dep.scale + sex + median_age + PC1+PC2+PC3+PC4+PC5+PC6+PC7+PC8+PC9+PC10, 
+           data = dat[mdd_psych_site!=-9], family = "binomial")
+
+res_mdd_psych_site <- process_logit(mdl_mdd_psych_site) %>% 
+  mutate(pheno = "MDD+psych_site", 
+         n_total = nrow(dat[mdd_psych_site!=-9]), 
+         n_cases = nrow(dat[mdd_psych_site==1]),
+         n_controls = nrow(dat[mdd_psych_site==0]))
+
+res_combined <- data.table(rbind(res_mdd, res_mdd_psych_site))
+
+res_combined[, OR_format := apply(.SD, 1, function(x) or_format_func(x[1], x[2], x[3])), .SDcols = c("OR", "ci.lower", "ci.upper")]
+res_combined$p.value.fmt <- sapply(res_combined$p.value, rounding_func)
+
+res_combined %>% 
+  filter(term == "pgs.dep.scale") %>% 
+  select(pheno, OR_format, p.value.fmt) %>%
+  kable() %>%
+  kable_styling()
+```
+
+### Forest plot
+```{r}
+p <- res_combined %>% 
+  filter(term == "pgs.dep.scale") %>% 
+  mutate(pheno = factor(pheno, levels = c("MDD", "MDD+psych_site"), labels = c("Code only", "Code + psych. visit"))) %>%
+  ggplot(aes(x = pheno, y = OR, ymin = ci.lower, ymax = ci.upper)) +
+  geom_point(size = 3) +
+  geom_errorbar(width = 0.2) +
+  geom_hline(yintercept = 1, linetype = "dashed") +
+  scale_x_discrete(expand = c(0, 0.4))  +
+  labs(x = "Phenotype", y = "Odds ratio (95% CI)") +
+  coord_flip() +
+  theme_bw() +
+  theme(axis.text.y = element_text(size = 8), 
+        axis.title.y = element_text(margin = margin(r = 10)),
+        axis.title.x = element_text(margin = margin(t = 10)),
+        panel.grid.major.y = element_blank()) 
+
+pdf("/data/davis_lab/allie/care_sites/output/mdd_application/mdd_pgs_regression_forest_plot.pdf", width = 3, height = 1.5)
+print(p)
+dev.off()
+```
+
+```{r}
+print(p)
+rm(p)
+```
+
+### Supplemental table
+```{r}
+supp_table <- copy(res_combined) %>% 
+  select(term, beta = estimate, std.error, statistic, OR, ci.lower, ci.upper, p.value, n_total, n_cases, pheno) %>%
+  data.table()
+
+## write to excel
+wb <- createWorkbook()
+addWorksheet(wb, "Code only")
+writeData(wb, "Code only", supp_table[pheno == "MDD"] %>% select(-pheno))
+addWorksheet(wb, "Code + psych. visit")
+writeData(wb, "Code + psych. visit", supp_table[pheno == "MDD+psych_site"] %>% select(-pheno))
+saveWorkbook(wb, "/data/davis_lab/allie/care_sites/output/mdd_application/SupplementalTable_depression_pgs_regression_results.xlsx", overwrite = TRUE)
+```
