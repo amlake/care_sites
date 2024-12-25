@@ -1,0 +1,171 @@
+---
+title: "Sexual trauma disclosures - care sites"
+author: "Allie Lake"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  html_document:
+    toc: true
+    theme: united
+    toc_depth: 4
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+pacman::p_load(data.table, dplyr, ggplot2, PheWAS, openxlsx, foreach, ggthemr, ggrepel, ggpubr, RColorBrewer, lubridate)
+options(scipen=999)
+ggthemr_reset()
+
+source("/data/davis_lab/allie/care_sites/scripts/mdd_application/manhattan_bar.R")
+```
+
+```{r}
+map <- fread("/data/davis_lab/allie/care_sites/output/CareSiteMap_Multispecialty_Long_UPDATED_111524.csv")
+care_site_names <- read.xlsx("/data/davis_lab/allie/care_sites/output/CareSite_VisitDetailCount_UPDATED_111524.xlsx") %>%
+  select(care_site_id, care_site_name) %>% 
+  data.table() %>% 
+  unique()
+
+map <- merge(map, care_site_names, by = "care_site_id")
+```
+
+## Compile ST disclosure data
+```{r}
+## load the ST disclosure phenotypes used for the ST GxE project
+## for this project, we are working with data from the June 2023 pull of the SD data
+## so, I will censor notes based on the latest date of the ICD codes from that SD pull, which is 2023-03-31
+st_notes <- fread("/data/davis_lab/allie/sa_trauma/sa_gxe/data/phenotype_validation/st_algv2_reapplied_databricks_112023_cases_bugfix_062724_notes_metadata.txt") %>%
+  filter(NOTE_DATE <= as.Date("2023-03-31")) %>% 
+  data.table()
+```
+
+## Select each patient's *earliest* disclosure
+```{r}
+st_notes[, earliest_note := min(NOTE_DATE), by = GRID]
+st_notes_earliest <- unique(st_notes[NOTE_DATE == earliest_note, .(GRID,NOTE_DATE)])
+
+n_distinct(st_notes$GRID) # 18,760 total individuals with a disclosure
+nrow(st_notes_earliest) # 18,760 total entries
+```
+
+## Map disclosures to care sites
+Map by date, since visit_occurrence_id is not available.
+```{r, eval = FALSE}
+## load all visit data from 2023 SD pull that map to a defined care site (not missing, Unclear, or Administrative)
+## (generated in compile_data.R)
+vdat <- readRDS("/data/davis_lab/allie/care_sites/data/mdd_application/20230607_sd_pull_visit_occurrence_defined_sites.Rds")
+n_distinct(vdat$GRID) # 3,083,596 total individuals with a visit mapped to a "defined" care site 
+
+## get the total individual count per care site and per specialty
+vdat[,cs_n_grid := n_distinct(.SD$GRID), by = care_site_id]
+vdat[,spec_n_grid := n_distinct(.SD$GRID), by = SpecialtyLong]
+
+## map earliest disclosures to care sites via date
+st_notes_visits_by_date <- merge(st_notes_earliest, vdat, by = "GRID", allow.cartesian = TRUE)
+st_notes_visits_by_date <- st_notes_visits_by_date[NOTE_DATE >= visit_start_date & NOTE_DATE <= visit_end_date]
+saveRDS(st_notes_visits_by_date, "/data/davis_lab/allie/care_sites/data/mdd_application/20230607_sd_pull_visit_occurrence_earliest_st_note_joined_by_date.Rds")
+
+n_distinct(st_notes_visits_by_date$GRID) # 11375 individuals with earliest disclosure mapping to a visit with a DEFINED CARE SITE by date (61% of total with st)
+```
+
+```{r}
+## load file generated above (joined by date)
+st_notes_visits <- readRDS("/data/davis_lab/allie/care_sites/data/mdd_application/20230607_sd_pull_visit_occurrence_earliest_st_note_joined_by_date.Rds")
+head(st_notes_visits)
+nrow(st_notes_visits) # 14881
+n_distinct(st_notes_visits$GRID) # 11375
+```
+
+```{r}
+## retain unique entries (by GRID, note date, and care site id)
+## there will be duplicates if a care site is mapped to multiple specialties
+st_notes_visits <- unique(st_notes_visits[,.(GRID,NOTE_DATE,care_site_id,care_site_name,SpecialtyLong,cs_n_grid,spec_n_grid)])
+nrow(st_notes_visits) # 13784
+n_distinct(st_notes_visits$GRID) # 11375
+
+nrow(unique(st_notes_visits[,.(GRID,NOTE_DATE,care_site_id)])) # 13316 - number of distinct GRID/care site combos
+nrow(unique(st_notes_visits[,.(GRID,NOTE_DATE,care_site_id,care_site_name)])) # 13316 - number of distinct GRID/care site combos (same as above)
+nrow(unique(st_notes_visits[,.(GRID,SpecialtyLong)])) # 13391 - number of distinct GRID/specialty combos
+```
+
+Even after restricting to the earliest disclosure for each individual and mapping to defined care sites, there are still many individuals with disclosures mapping to multiple different care sites on the same day.
+We will keep mutliple entries per individual, but will use the number of unique individuals as the denominator in the care site and specialty frequency calculations.
+Otherwise, we would be double-counting individuals with multiple care site visits on the same day. That might bias the results if individuals with disclosures are more likely to have multiple care site visits on the same day, or if certain care sites contribute disproportionately to the total (e.g., radiology or phlebotomy visits, which often co-occur with visits to other sites).
+
+```{r}
+paste0("Out of all patients with a disclosure, for what % of them does their earliest note map to a visit with a defined specialty? ",
+ round((n_distinct(st_notes_visits$GRID) / n_distinct(st_notes_earliest$GRID))*100, 2), "%")
+```
+
+## Get proportions of individuals with disclosures at each care site and specialty
+Normalize by total individual count per care site or specialty.
+```{r}
+N_st <- n_distinct(st_notes_visits$GRID) # 11375 - this will be the denominator for the ST-specific frequencies
+
+st_notes_visits[,n_st_per_site := n_distinct(.SD$GRID), by = care_site_id]
+st_notes_visits[,n_st_per_specialty := n_distinct(.SD$GRID), by = SpecialtyLong]
+
+care_site_summary_st <- unique(st_notes_visits[, .(care_site_id, care_site_name, SpecialtyLong, n_st_per_site, cs_n_grid)])
+care_site_summary_st[,freq_st_per_site := n_st_per_site / N_st]
+care_site_summary_st[,freq_st_per_site_norm := n_st_per_site / N_st / cs_n_grid]
+
+specialty_summary_st <- unique(st_notes_visits[, .(SpecialtyLong, n_st_per_specialty, spec_n_grid)])
+specialty_summary_st[,freq_st_per_specialty := n_st_per_specialty / N_st]
+specialty_summary_st[,freq_st_per_specialty_norm := n_st_per_specialty / N_st / spec_n_grid]
+```
+
+### Make supplemental tables
+```{r}
+care_site_supp <- copy(care_site_summary_st)
+names(care_site_supp) <- c("care_site_id", "care_site_name", "specialty", "n_st_patients_per_site", "n_total_patients_per_site", "prop_st_patients_per_site","prop_st_patients_per_site_normalized")
+setorder(care_site_supp, -n_st_patients_per_site)
+
+specialty_supp <- copy(specialty_summary_st)
+names(specialty_supp) <- c("specialty", "n_st_patients_per_specialty", "n_total_patients_per_specialty", "prop_st_patients_per_specialty","prop_st_patients_per_specialty_normalized")
+setorder(specialty_supp, -n_st_patients_per_specialty)
+
+## write to excel
+wb <- createWorkbook()
+addWorksheet(wb, "Care Site Summary")
+writeData(wb, "Care Site Summary", care_site_supp)
+addWorksheet(wb, "Specialty Summary")
+writeData(wb, "Specialty Summary", specialty_supp)
+saveWorkbook(wb, "/data/davis_lab/allie/care_sites/output/mdd_application/SupplementalTable_st_care_site_specialty_summary.xlsx", overwrite = TRUE)
+```
+
+## Plots
+```{r}
+## reformat data frame for plotting
+caresite_plot_df <- care_site_summary_st %>% 
+  filter(SpecialtyLong != "Phlebotomy" & SpecialtyLong != "Radiology"  & SpecialtyLong != "Research") %>%
+  filter(n_st_per_site >=50) %>%
+  select(care_site_id, care_site_name, 
+    specialty = SpecialtyLong, n_phe_per_site = n_st_per_site, 
+    freq_phe_per_site = freq_st_per_site, freq_phe_per_site_norm = freq_st_per_site_norm) %>%
+  data.table()
+
+p1 <- caresite_manhattan_bar(caresite_plot_df, points = T, flip = F) +
+  labs(x = "", y = "Proportion of disclosures per care site\n") +
+  scale_y_continuous(breaks = seq(0,0.055,0.005), limits = c(0,0.055))# +
+  #theme(panel.grid.minor.y = element_blank())
+
+## create a second version of the plot, normalizing by total individual count per care site
+caresite_plot_df_norm <- caresite_plot_df %>%
+  select(-freq_phe_per_site) %>% 
+  rename(freq_phe_per_site = freq_phe_per_site_norm) %>% 
+  mutate(freq_phe_per_site = freq_phe_per_site * 10000) %>%
+  data.table()
+
+p2 <- caresite_manhattan_bar(caresite_plot_df_norm, points = T, flip = T) +
+  labs(x = "", y = "Proportion of disclosures per care site\n(normalized by per-site individual count)") +
+  scale_y_reverse(breaks = rev(seq(0,0.1,0.01)), limits = c(0.1,0))
+
+p <- ggarrange(p1, p2, ncol=1,nrow=2)
+
+pdf("/data/davis_lab/allie/care_sites/output/mdd_application/earliest_st_note_site_counts_mapped_by_date_miami_points.pdf", width = 11, height = 8.5)
+print(p)
+dev.off()
+```
+
+```{r}
+print(p)
+```

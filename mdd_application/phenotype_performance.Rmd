@@ -1,0 +1,147 @@
+---
+title: "Care sites MDD application: precision phenotyping"
+author: "Allie Lake"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  html_document:
+    toc: true
+    theme: united
+    toc_depth: 4
+---
+
+```{r setup, include = FALSE, message = FALSE, warning = FALSE, tidy = TRUE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE, tidy = TRUE, fig.width=6, fig.height=4)
+pacman::p_load(data.table, dplyr, foreach, PheWAS, ggplot2, plotly, ggthemr, ggpubr, scales, RColorBrewer, ggrepel, kableExtra, broom, openxlsx)
+# setwd("/data/davis_lab/allie/care_sites/scripts")
+ggthemr_reset()
+```
+
+## Load data
+NOTE: the variable names below use "MDD", but the phenotype is actually "depression" (phecode 296.2).
+```{r}
+## load care site map
+map <- fread("/data/davis_lab/allie/care_sites/output/CareSiteMap_Multispecialty_Long_UPDATED_111524.csv")
+
+## load demographics
+dat <- fread("/data/davis_lab/allie/generate_phecode_tables/covariate_files/20230607_sd_wide_covariates_121023.txt")
+
+## load medical home phecodes
+phecodes <- readRDS("/data/davis_lab/shared/phenotype_data/biovu/phecode_tables/medical_home_phecode_table_20230607_pull_2_distinct_dates_no_exclusions_121023.Rds")
+setDT(phecodes)
+
+## remove phecode columns except for depression
+setnames(phecodes, "296.22", "mdd")
+setnames(phecodes, "296.2", "dep")
+
+## check that everyone who is a case for 296.22 is also a case for 296.2
+stopifnot(nrow(phecodes[dep == 0 & mdd == 1]) == 0)
+
+phe_cols<- names(phecodes)[grepl("^[[:digit:]]", names(phecodes))]
+phecodes <- phecodes[,-phe_cols,with=F]
+phecodes[, mdd := NULL]
+setnames(phecodes,"dep","mdd")
+
+## recode pheno columns
+phecodes$mdd <- as.numeric(phecodes$mdd)
+phecodes[is.na(mdd), mdd := -9]
+
+## combine phecodes with demographic data
+dat <- merge(dat, phecodes, by = "GRID")
+
+head(dat)
+```
+
+```{r}
+## load SD-wide visit info
+## see compile_data.R for details on how this file was created
+visit <- readRDS("/data/davis_lab/allie/care_sites/data/mdd_application/20230607_sd_pull_visit_occurrence_defined_sites.Rds")
+```
+
+## Depression definitions
+* Definition 1: standard depression phecode (296.2)
+* Definition 2: 
+  * case = has depression phecode (296.2) + ≥1 psych site visit (i.e., has depression and has ever seen a psychiatrist)
+  * control = no depression phecode (296.2)
+  * excluded = has depression phecode (296.2) but no psych site visit or is N/A for depression phecode
+```{r}
+psych_sites <- unique(map[SpecialtyLong == "Psychiatry", care_site_id])
+psych_grids <- unique(visit[care_site_id %in% psych_sites, GRID])
+dat[, psych_cohort := as.numeric(GRID %in% psych_grids)]
+
+dat[, mdd_psych_site := ifelse(mdd==1 & psych_cohort==1, 1,
+                                ifelse(mdd==0,0,-9))]
+
+dat[, mdd_pheno := ifelse(mdd_psych_site == 1, "mdd+site", ifelse(mdd == 1, "mdd_no_site", ifelse(mdd == 0, "control", "excluded")))]  
+head(dat)                 
+```
+
+```{r}
+dat %>% 
+  group_by(mdd) %>%
+  summarise(n = n())
+```
+
+## Performance metrics
+```{r}
+chart_labels <- fread("/data/davis_lab/allie/care_sites/data/mdd_application/tmp.csv") %>%
+  select("GRID" = "Subject Numb", "label_long" = "What is your label for this patient?") %>% 
+  data.table()
+
+chart_labels$label <- factor(chart_labels$label_long, 
+                            levels = c("D No (Not Depression/Not Enough Information)", "D Probable (Lower Evidence)", "D Definite (Higher Evidence)"),
+                            labels = c("no_dep", "probable_dep", "definite_dep"))
+
+table(chart_labels$label)
+```
+
+```{r}
+nrow(chart_labels[GRID %in% dat$GRID])
+```
+Only 153 of the 200 manually reviewed individuals are in the phecode table.
+
+```{r}
+chart_labels <- merge(dat, chart_labels, by = "GRID")
+
+## bin algorithm phenotypes and gold standard labels into cases and non-cases for performance calculations
+chart_labels[, case_mdd_code_alg := ifelse(mdd == 1, 1, 0)]
+chart_labels[, case_mdd_site_alg := ifelse(mdd_psych_site == 1, 1, 0)]
+chart_labels[, case_mdd_chart := ifelse(label == "no_dep", 0, 1)]
+```
+
+### Depression codes only
+```{r}
+tn <- nrow(chart_labels[case_mdd_code_alg == 0 & case_mdd_chart ==  0])
+fn <- nrow(chart_labels[case_mdd_code_alg == 0 & case_mdd_chart ==  1])
+fp <- nrow(chart_labels[case_mdd_code_alg == 1 & case_mdd_chart ==  0])
+tp <- nrow(chart_labels[case_mdd_code_alg == 1 & case_mdd_chart ==  1])
+
+res_mdd_code_alg <- data.table(tp = tp, tn = tn, fp = fp, fn = fn)
+res_mdd_code_alg[, ppv := tp/(tp+fp)]
+res_mdd_code_alg[, npv := tn/(tn+fn)]
+res_mdd_code_alg[, sens := tp/(tp+fn)]
+res_mdd_code_alg[, spec := tn/(fp+tn)]
+res_mdd_code_alg[, fpr := fp/(fp+tn)]
+res_mdd_code_alg[, f1 := 2*tp/(2*tp+fp+fn)]
+
+res_mdd_code_alg
+rm(tn, fn, fp, tp)
+```
+
+### Depression codes + psych care site visit
+```{r}
+tn <- nrow(chart_labels[case_mdd_site_alg == 0 & case_mdd_chart ==  0])
+fn <- nrow(chart_labels[case_mdd_site_alg == 0 & case_mdd_chart ==  1])
+fp <- nrow(chart_labels[case_mdd_site_alg == 1 & case_mdd_chart ==  0])
+tp <- nrow(chart_labels[case_mdd_site_alg == 1 & case_mdd_chart ==  1])
+
+res_mdd_site_alg <- data.table(tp = tp, tn = tn, fp = fp, fn = fn)
+res_mdd_site_alg[, ppv := tp/(tp+fp)]
+res_mdd_site_alg[, npv := tn/(tn+fn)]
+res_mdd_site_alg[, sens := tp/(tp+fn)]
+res_mdd_site_alg[, spec := tn/(fp+tn)]
+res_mdd_site_alg[, fpr := fp/(fp+tn)]
+res_mdd_site_alg[, f1 := 2*tp/(2*tp+fp+fn)]
+
+res_mdd_site_alg
+rm(tn, fn, fp, tp)
+```
