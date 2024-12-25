@@ -226,7 +226,7 @@ p2 <- caresite_manhattan_bar(caresite_plot_df_norm, points = T, flip = T) +
 
 p <- ggarrange(p1, p2, ncol=1,nrow=2)
 
-pdf("/data/davis_lab/allie/care_sites/output/mdd_application/earliest_med_site_counts_bar_mapped_by_date_miami_points.pdf", width = 11, height = 8.5)
+pdf("/data/davis_lab/allie/care_sites/output/mdd_application/earliest_med_site_counts_mapped_by_date_miami_points.pdf", width = 11, height = 8.5)
 print(p)
 dev.off()
 ```
