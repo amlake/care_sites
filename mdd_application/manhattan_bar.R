@@ -24,7 +24,7 @@ caresite_manhattan_bar <- function(dat, points = FALSE, flip = FALSE) {
     ## Group specialties into 3 groups: Medical, Surgical, Other
     ## TODO: confirm with John that this is the correct annotation file
     Specialties_3group <- fread("/data/davis_lab/allie/care_sites/output/Figures/Descriptives/Specialties_NCareSites_Label_ANNOTATED.csv") %>%
-        rename(specialty = SpecialtyLong) %>%
+        rename(specialty = MappedSpecialty) %>%
         filter(specialty %in% plot_df$specialty) %>%
         select(specialty, Group) %>%
         data.table()

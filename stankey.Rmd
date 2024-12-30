@@ -55,7 +55,7 @@ stopifnot(n_distinct(map$care_site_id) == n_distinct(map$care_site_name))
 
 ### Select top 50 sites (by visit count) within each category (medical, surgical, other)
 ```{r, eval = TRUE}
-Specialties_3group <- fread("/data/davis_lab/allie/care_sites/output/Figures/Specialties_NCareSites_Label_ANNOTATED.csv")
+Specialties_3group <- fread("/data/davis_lab/allie/care_sites/output/Figures/Descriptives/Specialties_NCareSites_Label_ANNOTATED.csv")
 map <- merge(map, Specialties_3group, by = "SpecialtyLong")
 
 setorder(map, -Visits_N)
@@ -70,15 +70,26 @@ setorder(map, pherank_1_category, SpecialtyLong)
 # setorder(map, SpecialtyLong, pherank_1_category)
 ```
 
-## make plot
+## make plots
 ### Care site --> phecode --> specialty (divided into medical, surgical, other)
 ```{r}
 sankey <- function(Map) {
+  sites <- unique(Map$care_site_name)
+  specs <- unique(Map$SpecialtyLong)
+
+  ## change name of ENT specialty, which is also the name of a care site
+  specs[specs == "ENT"] <- "Otolaryngology"
+  Map[SpecialtyLong == "ENT", SpecialtyLong := "Otolaryngology"]
+  
   ## create nodes for each care site and each specialty
-  nodes <- unique(data.table(name = c(Map$care_site_name, Map$SpecialtyLong)))
+  nodes <- data.table(name = c(sites, specs))
+
+  ## make sure there are no other duplicates
+  stopifnot(n_distinct(nodes$name) == nrow(nodes))
+
   nodes[, id := 0:(.N-1)]
 
-  ## create links between care site notes and specialty nodes
+  ## create links between care site nodes and specialty nodes
   links <- merge(nodes[,.(id, name)], Map[,.(care_site_name, SpecialtyLong)], by.x = "name", by.y = "care_site_name")
   setnames(links, "id", "source")
 

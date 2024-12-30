@@ -36,6 +36,8 @@ map <- merge(map, care_site_names, by = "care_site_id")
 st_notes <- fread("/data/davis_lab/allie/sa_trauma/sa_gxe/data/phenotype_validation/st_algv2_reapplied_databricks_112023_cases_bugfix_062724_notes_metadata.txt") %>%
   filter(NOTE_DATE <= as.Date("2023-03-31")) %>% 
   data.table()
+
+range(st_notes$NOTE_DATE) # "1992-10-09" "2023-03-31"
 ```
 
 ## Select each patient's *earliest* disclosure

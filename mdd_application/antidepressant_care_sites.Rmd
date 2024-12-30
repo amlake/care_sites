@@ -198,6 +198,36 @@ writeData(wb, "Specialty Summary", specialty_supp)
 saveWorkbook(wb, "/data/davis_lab/allie/care_sites/output/mdd_application/SupplementalTable_antidepressant_care_site_specialty_summary.xlsx", overwrite = TRUE)
 ```
 
+```{r}
+# final dataset- get GRID and med date
+med_date <- unique(med_visits[,.(GRID, start_date)])
+
+# re-extract med records
+med_list <- merge(meds, med_date, by = c("GRID", "start_date")) 
+n_distinct(med_list$GRID) # 215920
+
+med_list <- unique(med_list[,.(GRID, generic_name = toupper(matched_drug_generic))])
+
+med_map <- unique(meds[,.(generic_name = toupper(matched_drug_generic), brand_name = matched_drug)])
+med_map <- med_map[brand_name != generic_name]
+med_map[, all_brand_names := paste0(unique(brand_name), collapse = ", "), by = generic_name]
+med_map <- unique(med_map[,.(generic_name, all_brand_names)])
+
+med_list <- merge(med_list, med_map, by = "generic_name", allow.cartesian = TRUE)
+
+med_list_tbl <- med_list %>% 
+  group_by(generic_name, all_brand_names) %>% 
+  summarise(n = n()) %>%
+  arrange(-n) %>% 
+  as.data.frame()
+
+## write to excel
+wb <- createWorkbook()
+addWorksheet(wb, "Antidepressant List")
+writeData(wb, "Antidepressant List", med_list_tbl)
+saveWorkbook(wb, "/data/davis_lab/allie/care_sites/output/mdd_application/SupplementalTable_antidepressant_list.xlsx", overwrite = TRUE)
+```
+
 ## Plots
 ```{r}
 ## reformat data frame for plotting

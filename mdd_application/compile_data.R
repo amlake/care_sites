@@ -1,9 +1,11 @@
-pacman::p_load(data.table, dplyr)
+pacman::p_load(data.table, dplyr, openxlsx)
 setwd("/data/davis_lab/allie/care_sites")
 
 #### Compile table with demographics, covariates, PGS, and phecodes for MEGA cohort ####
 ## load demographics
 dat <- fread("/data/davis_lab/allie/generate_phecode_tables/covariate_files/20230607_sd_wide_covariates_121023.txt")
+range(dat$first_day) # "1989-01-30" "2023-03-31"
+range(dat$last_day) # "1989-01-30" "2023-03-31"
 
 ## load care sites specialty map
 map <- fread("/data/davis_lab/allie/care_sites/output/CareSiteMap_Multispecialty_Long_UPDATED_111524.csv")
@@ -27,6 +29,8 @@ pgs_eur <- fread("/data/davis_lab/allie/generate_psych_pgs/output/psych_pgs_eur_
   select(GRID, pgs.scz = pgs.scz.eur, pgs.bd = pgs.bd.eur, pgs.dep = pgs.dep.eur) %>%
   mutate(genetic_ancestry = "EUR") %>%
   data.table()
+
+nrow(pgs_eur) # 66917
 
 pgs_eur[, pgs.scz.scale := scale(pgs.scz)]
 pgs_eur[, pgs.bd.scale := scale(pgs.bd)]
@@ -65,8 +69,22 @@ saveRDS(dat, "data/mega_eur_afr_covariates_pgs_phecodes_092424.Rds")
 #### Compile visit data for full SD cohort ####
 visit_full_sd <- fread("/data/davis_lab/shared/phenotype_data/biovu/delivered_data/sd_wide_pull/20230607_pull/20230607_sd_pull_visit_occurrence_all.txt.gz")
 
+nrow(visit_full_sd) # 70672052
+n_distinct(visit_full_sd$visit_occurrence_id) # 70672052
+n_distinct(visit_full_sd$GRID) # 3455981
+
+nrow(visit_full_sd[care_site_id != 0]) # 54679804
+n_distinct(visit_full_sd[care_site_id != 0]$GRID) # 3274235
+
 class(visit_full_sd$visit_occurrence_id) # integer
 range(visit_full_sd$visit_occurrence_id) # 1-112444321 (don't need to worry about int64 issues)
+
+range(visit_full_sd$visit_start_date) # "1799-02-02" "2023-03-31"
+nrow(visit_full_sd[visit_start_date > as.Date("1980-01-01")]) # 70671951
+nrow(visit_full_sd[visit_start_date > as.Date("1989-01-01")]) # 70637846
+
+nrow(visit_full_sd[visit_start_date > as.Date("1980-01-01") & care_site_id != 0]) # 54679802
+nrow(visit_full_sd[visit_start_date > as.Date("1989-01-01") & care_site_id != 0]) # 54670765
 
 visit <- copy(visit_full_sd)
 
@@ -88,22 +106,25 @@ n_distinct(visit$visit_occurrence_id) # 70672052
 
 saveRDS(visit, "/data/davis_lab/allie/care_sites/data/mdd_application/20230607_sd_pull_visit_occurrence_unique.Rds")
 
-nrow(visit[care_site_id != 0]) / nrow(visit) # 77.4% of visits have a non-null care site
+nrow(visit[care_site_id != 0]) # 54679804 visits have a non-null care site id
+nrow(visit[care_site_id != 0]) / nrow(visit) # 77.4% of visits have a non-null care site id
 
 visit_sites <- merge(visit[care_site_id != 0], map, by = "care_site_id", allow.cartesian = T)
 visit_sites <- visit_sites[SpecialtyLong != "Unclear" & SpecialtyLong != "Administrative"]
 
+n_distinct(visit_sites$GRID) # 3083596 individuals have at least one encounter at a care site with a defined specialty
+n_distinct(visit_sites$visit_occurrence_id) # 46471048 visits have a care site with a defined specialty
 n_distinct(visit_sites$visit_occurrence_id) / nrow(visit) # 65.8% of visits have a care site with a defined specialty
 n_distinct(visit_sites$visit_occurrence_id) / nrow(visit[care_site_id != 0]) # 85.0% of visits with a non-null care site have a defined specialty
 
-n_distinct(visit_sites$visit_occurrence_id) # 46471048
-nrow(visit_sites) # 51751207
+nrow(visit_sites) # 51751207 total rows
 
 saveRDS(visit_sites, "/data/davis_lab/allie/care_sites/data/mdd_application/20230607_sd_pull_visit_occurrence_defined_sites.Rds")
 
-#### Compile visit data for MEGA cohort ####
 ## restrict to MEGA cohort
 visit_sites_mega <- visit_sites[GRID %in% dat$GRID]
 
 ## save
 saveRDS(visit_sites_mega, "/data/davis_lab/allie/care_sites/data/mdd_application/20230607_sd_pull_mega_grids_visit_occurrence_defined_sites.Rds")
+
+
