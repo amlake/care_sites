@@ -51,15 +51,71 @@ care_site_joined <- left_join(care_site, x_care_site, by="care_site_id") %>%
   mutate(care_site_id=as.numeric(care_site_id)) %>%
   rename(dept_specialty="specialty")
 
-######## Table 1: Characterize care site by visit number and visit type ######## 
+######## Table 1: Characterize care site by patient demographics ######## 
 visit_occurrence <- as.data.frame(fread("/data/davis_lab/shared/phenotype_data/biovu/delivered_data/sd_wide_pull/20230607_pull/20230607_sd_pull_visit_occurrence_all.txt.gz"))
-concept <- as.data.frame(fread("/data/davis_lab/shared/phenotype_data/biovu/delivered_data/sd_wide_pull/20230607_pull/20230607_sd_pull_concept_all.txt.gz"))
+person <- as.data.frame(fread("/data/davis_lab/shared/phenotype_data/biovu/delivered_data/sd_wide_pull/20230607_pull/20230607_sd_pull_person_all.txt.gz"))
 
-# Calculate frequency of visit location (visit_concept_id) for each care_site_id
+## Descriptives
+# Get proportion of care sites and visits excluded
+visitcounts <- visit_occurrence %>% 
+  filter(visit_start_date >= "1980-01-01") %>%
+  select(GRID,care_site_id,visit_start_date,visit_concept_id) %>%
+  left_join(person[,c(12,13,6)],by="GRID") %>%
+  left_join(CareSiteMap_Wide,by="care_site_id") %>%
+  mutate(DOB = as.Date(birth_datetime),
+         visit_start_date = as.Date(visit_start_date),
+         VisitAge = as.numeric((visit_start_date-DOB)/365.25),
+         Gender = gender_source_value) %>%
+  mutate(visit_location = case_when(visit_concept_id == "9201" ~ "Inpatient",
+         visit_concept_id == "9202" ~ "Outpatient",
+         visit_concept_id == "9203" ~ "ER",
+         visit_concept_id == "0" ~ "Unspecified",
+         TRUE ~ NA_character_)) %>%
+  filter(VisitAge>=0)
+
+fwrite(visitcounts, file="./output/CareSiteDescriptives/all_visit_counts.csv")
+
+## Make demographic summary for each care site
+patient_demographics <- visit_occurrence %>% 
+  filter(visit_start_date >= "1980-01-01") %>%
+  select(GRID,care_site_id,visit_start_date) %>%
+  left_join(person[,c(12,13,6)],by="GRID") %>%
+  mutate(DOB = as.Date(birth_datetime),
+         visit_start_date = as.Date(visit_start_date),
+         VisitYear = format(as.Date(visit_start_date), "%Y"),
+         VisitAge = as.numeric((visit_start_date-DOB)/365.25),
+         Gender = gender_source_value) %>%
+  filter(VisitAge>=0) %>%
+  group_by(care_site_id) %>%
+  summarise(Person_N=n_distinct(GRID),
+            Visits_N=n(),
+            VisitYear_Median = median(as.numeric(VisitYear)),
+            Age_Median = median(VisitAge),
+            Adult_N = sum(VisitAge>18),
+            Adult_Percent = paste0(round(100*Adult_N/Visits_N,2),'%'),
+            Female_N = sum(Gender=="F"),
+            Female_Percent = paste0(round(100*Female_N/Visits_N,2),'%'),
+            GenderSpecific = ifelse(Female_Percent>=75, "Female-Specific", 
+                                    ifelse(Female_Percent<25, "Male-Specific",
+                                           "NonSpecific")),
+            AgeSpecific = ifelse(Adult_Percent>=75, "Adult-Specific", 
+                                 ifelse(Adult_Percent<25, "Pediatric-Specific",
+                                        "NonSpecific")))
+
+######## Table 2: Characterize care site by visit number and visit type ######## 
+## Calculate frequency of visit location (visit_concept_id) for each care_site_id
+# concept <- as.data.frame(fread("/data/davis_lab/shared/phenotype_data/biovu/delivered_data/sd_wide_pull/20230607_pull/20230607_sd_pull_concept_all.txt.gz"))
 # View(concept[concept$concept_id %in% c("9201","9202","9203"),])
 
-visit_counts <- visit_occurrence %>% 
+caresite_visitcounts <- visit_occurrence %>% 
   filter(visit_start_date >= "1980-01-01") %>%
+  left_join(person[,c(12,13,6)],by="GRID") %>%
+  mutate(DOB = as.Date(birth_datetime),
+         visit_start_date = as.Date(visit_start_date),
+         VisitYear = format(as.Date(visit_start_date), "%Y"),
+         VisitAge = as.numeric((visit_start_date-DOB)/365.25),
+         Gender = gender_source_value) %>%
+  filter(VisitAge>=0) %>%
   mutate(visit_location = case_when(visit_concept_id == "9201" ~ "Inpatient",
                                     visit_concept_id == "9202" ~ "Outpatient",
                                     visit_concept_id == "9203" ~ "ER",
@@ -77,35 +133,7 @@ visit_counts <- visit_occurrence %>%
             Unspecified_Percent = paste0(round(100*Unspecified_N/Visits_N,2),'%'),
             FirstVisit=min(visit_start_date), 
             LastVisit=max(visit_start_date)) %>%
-  select(-c("Outpt_N","Inpt_N","Emer_N","Unspecified_N"))
-
-######## Table 2: Characterize care site by patient demographics ######## 
-person <- as.data.frame(fread("/data/davis_lab/shared/phenotype_data/biovu/delivered_data/sd_wide_pull/20230607_pull/20230607_sd_pull_person_all.txt.gz"))
-
-# Calculate frequency of patient age, age specificity, gender, and gender specificity
-patient_demographics <- visit_occurrence %>% 
-  filter(visit_start_date >= "1980-01-01") %>%
-  select(GRID,care_site_id,visit_start_date) %>%
-  left_join(person[,c(12,13,6)],by="GRID") %>%
-  mutate(DOB = as.Date(birth_datetime),
-         visit_start_date = as.Date(visit_start_date),
-         VisitAge = as.numeric((visit_start_date-DOB)/365.25),
-         Gender = gender_source_value) %>%
-  filter(VisitAge>=0) %>%
-  group_by(care_site_id) %>%
-  summarise(Visits_N=n(),
-            Age_Median = median(VisitAge),
-            Adult_N = sum(VisitAge>18),
-            Adult_Percent = paste0(round(100*Adult_N/Visits_N,2),'%'),
-            Female_N = sum(Gender=="F"),
-            Female_Percent = paste0(round(100*Female_N/Visits_N,2),'%'),
-            GenderSpecific = ifelse(Female_Percent>=75, "Female-Specific", 
-                                    ifelse(Female_Percent<25, "Male-Specific",
-                                           "NonSpecific")),
-            AgeSpecific = ifelse(Adult_Percent>=75, "Adult-Specific", 
-                                 ifelse(Adult_Percent<25, "Pediatric-Specific",
-                                        "NonSpecific"))) %>%
-  select(-c("Visits_N","Adult_N","Female_N"))
+  select(-"Visits_N")
 
 ######## Table 3: Top ICD and CPT codes for each care site ######## 
 ### Import ICD codes and create phecodes 
@@ -145,7 +173,7 @@ phecodecount_bycaresite <- rbind(Phecodes_ICD9_Visits,Phecodes_ICD10_Visits) %>%
 
 pheinfo_anno <- PheWAS::pheinfo %>% select("phecode","description","group")
 
-# Get top 5 phecodes 
+## Make summary of top 5 codes for each care site
 top5phe <- phecodecount_bycaresite %>%
   filter(freqrank <= 5) %>%
   select(c("care_site_id","phecode","CodeCount","freqrank")) %>%
@@ -160,6 +188,10 @@ top5phe <- phecodecount_bycaresite %>%
          "pherank_3", "pherank_3_description", "pherank_3_category", 
          "pherank_4", "pherank_4_description", "pherank_4_category",
          "pherank_5", "pherank_5_description", "pherank_5_category")
+
+top100phe <- phecodecount_bycaresite %>%
+  filter(freqrank <= 100) %>%
+  select(c("care_site_id","phecode","CodeCount","freqrank"))
 
 ######## Table 4: Get top 5 CPT codes for each care site ######## 
 # Import CPT-4 codes 
@@ -182,7 +214,7 @@ cptcount_bycaresite <- CPTcodes_Visits %>%
 
 cptinfo_anno <- cptcount_bycaresite %>% distinct(concept_code,concept_name)
 
-# Get top 5 cpt codes 
+## Make summary of top 5 codes for each care site
 top5cpt <- cptcount_bycaresite %>%
   filter(freqrank <= 5) %>%
   select(c("care_site_id","concept_code","CodeCount","freqrank")) %>%
@@ -198,17 +230,31 @@ top5cpt <- cptcount_bycaresite %>%
          "cptrank_4", "cptrank_4_description",
          "cptrank_5", "cptrank_5_description")
 
+top100cpt <- cptcount_bycaresite %>%
+  filter(freqrank <= 100) %>%
+  select(c("care_site_id","concept_code","CodeCount","freqrank"))
+
 ######## Create table with all variables ######## 
 fwrite(care_site_joined, file="./output/CareSiteDescriptives/omop_care_site_info.csv")
-fwrite(visit_counts, file="./output/CareSiteDescriptives/visit_counts_by_caresite.csv")
+fwrite(caresite_visitcounts, file="./output/CareSiteDescriptives/visit_counts_by_caresite.csv")
 fwrite(patient_demographics, file="./output/CareSiteDescriptives/patient_demographics_by_caresite.csv")
-fwrite(top5phe, file="./output/CareSiteDescriptives/top5phecodes_by_caresite.csv")
-fwrite(top5cpt, file="./output/CareSiteDescriptives/top5cptcodes_by_caresite.csv")
+fwrite(top5phe, file="./output/CareSiteDescriptives/top5phecodes_by_caresite_wide.csv")
+fwrite(top100phe, file="./output/CareSiteDescriptives/top100phecodes_by_caresite_long.csv")
+fwrite(top5cpt, file="./output/CareSiteDescriptives/top5cptcodes_by_caresite_wide.csv")
+fwrite(top100cpt, file="./output/CareSiteDescriptives/top100cptcodes_by_caresite_long.csv")
+
+care_site_joined <- fread(file="./output/CareSiteDescriptives/omop_care_site_info.csv")
+caresite_visitcounts <- fread(file="./output/CareSiteDescriptives/visit_counts_by_caresite.csv")
+patient_demographics <- fread(file="./output/CareSiteDescriptives/patient_demographics_by_caresite.csv")
+top5phe <- fread(file="./output/CareSiteDescriptives/top5phecodes_by_caresite_wide.csv")
+top100phe <- fread(file="./output/CareSiteDescriptives/top100phecodes_by_caresite_long.csv")
+top5cpt <- fread(file="./output/CareSiteDescriptives/top5cptcodes_by_caresite_wide.csv")
+top100cpt <- fread(file="./output/CareSiteDescriptives/top100cptcodes_by_caresite_long.csv")
 
 care_site_summary <- CareSiteMap_Wide %>%
   left_join(care_site_joined,by="care_site_id") %>%
-  left_join(visit_counts,by="care_site_id") %>%
   left_join(patient_demographics,by="care_site_id") %>%
+  left_join(caresite_visitcounts,by="care_site_id") %>%
   left_join(top5phe,by="care_site_id") %>%
   left_join(top5cpt,by="care_site_id")
 
@@ -242,26 +288,9 @@ CareSite_Summary_Long_Export <- CareSite_Summary_Long %>%
 write.csv(CareSite_Summary_Long_Export, 
           file="./output/CareSiteMap_Multispecialty_Long_UPDATED_111524.csv", row.names=F)
 
-######## Write Supplemental Table for top 25 care sites ######## 
-All <- subset(FinalSummary_CareSites,MappedSpecialty!="Unclear") %>% 
-  arrange(desc(Visits_N)) %>% 
-  select("care_site_id", "MappedSpecialty","IsMultiSpecialty","MultiSpecialty_Secondary","MultiSpecialty_Tertiary")
+# Write table with filtered care sites (no administrative or unclear specialties)
+All <- subset(FinalSummary_CareSites, care_site_id!="0" & MappedSpecialty!="Administrative" & MappedSpecialty!="Unclear") %>% 
+  arrange(desc(Visits_N))
 
-sheets <- list("VisitType" = left_join(All, visit_counts, by="care_site_id"), 
-               "PatientDemographics" = left_join(All, patient_demographics, by="care_site_id"), 
-               "Top5_Phecodes" = left_join(All, top5phe, by="care_site_id"),
-               "Top5_CPTcodes" = left_join(All, top5cpt, by="care_site_id"))
+write.xlsx(All, "./output/CareSite_VisitDetailCount_FILTERED_122924.xlsx", colWidths = "auto")
 
-write.xlsx(sheets, "./output/SupplementalTable_All_MostCommonCareSites.xlsx", colWidths = "auto")
-
-# Top 25
-Top25 <- subset(FinalSummary_CareSites,MappedSpecialty!="Unclear") %>% 
-  arrange(desc(Visits_N)) %>% filter(row_number()<=25) %>% 
-  select("care_site_id", "MappedSpecialty","IsMultiSpecialty","MultiSpecialty_Secondary","MultiSpecialty_Tertiary")
-
-sheets <- list("VisitType" = left_join(Top25, visit_counts, by="care_site_id"), 
-          "PatientDemographics" = left_join(Top25, patient_demographics, by="care_site_id"), 
-          "Top5_Phecodes" = left_join(Top25, top5phe, by="care_site_id"),
-          "Top5_CPTcodes" = left_join(Top25, top5cpt, by="care_site_id"))
-
-write.xlsx(sheets, "./output/SupplementalTable_Top25MostCommonCareSites.xlsx", colWidths = "auto")
