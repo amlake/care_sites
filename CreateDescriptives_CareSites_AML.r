@@ -270,9 +270,18 @@ caresite_visitcounts_overall <- visit_occurrence %>%
             Emer_Percent = paste0(round(100*Emer_N/Visits_N,2),'%'),
             Unspecified_N = sum(visit_location=="Unspecified"),
             Unspecified_Percent = paste0(round(100*Unspecified_N/Visits_N,2),'%'),
+            ### @Allie: This is what I added to the script
+            Outpt_Percent_Numeric = round(100*Outpt_N/Visits_N,2),
+            Inpt_Percent_Numeric = round(100*Inpt_N/Visits_N,2),
+            Emer_Percent_Numeric = round(100*Emer_N/Visits_N,2),
+            Unspecified_Percent_Numeric = round(100*Unspecified_N/Visits_N,2),
+            MajorityVisitType = case_when(Outpt_Percent_Numeric >= 0.75 ~ "Outpatient", 
+                                           Inpt_Percent_Numeric >= 0.75 ~ "Inpatient",
+                                           Emer_Percent_Numeric >= 0.75 ~ "Emergency",
+                                           TRUE ~ "Mixed"),
             FirstVisit=min(visit_start_date), 
             LastVisit=max(visit_start_date)) %>%
-  select(-"Visits_N")
+  select(-c("Visits_N","Outpt_Percent_Numeric","Inpt_Percent_Numeric","Emer_Percent_Numeric","Unspecified_Percent_Numeric"))
 
 caresite_visitcounts_overall
 # Outpt_N Outpt_Percent Inpt_N Inpt_Percent  Emer_N Emer_Percent
