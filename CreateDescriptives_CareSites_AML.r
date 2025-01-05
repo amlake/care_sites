@@ -52,15 +52,13 @@ care_site_joined <- left_join(care_site, x_care_site, by="care_site_id") %>%
   rename(dept_specialty="specialty")
 
 ######## Table 1: Characterize care site by patient demographics ######## 
-visit_occurrence <- as.data.frame(fread("data/sd_data_qc/20230607_sd_pull_visit_occurrence_dates_cleaned_overlapping_grids.txt"))
-person <- as.data.frame(fread("data/sd_data_qc/20230607_sd_pull_person_dates_cleaned_overlapping_grids.txt"))
-
-range(person$year_of_birth) # 1908-2023
-range(visit_occurrence$visit_start_date) # 1998-01-01 to 2023-03-31
+visit_occurrence <- as.data.frame(fread("/data/davis_lab/shared/phenotype_data/biovu/delivered_data/sd_wide_pull/20230607_pull/20230607_sd_pull_visit_occurrence_all.txt.gz"))
+person <- as.data.frame(fread("/data/davis_lab/shared/phenotype_data/biovu/delivered_data/sd_wide_pull/20230607_pull/20230607_sd_pull_person_all.txt.gz"))
 
 ## Descriptives
 # Get proportion of care sites and visits excluded
 visitcounts <- visit_occurrence %>% 
+  filter(visit_start_date >= "1980-01-01") %>%
   select(GRID,care_site_id,visit_start_date,visit_concept_id) %>%
   left_join(person[,c(12,13,6)],by="GRID") %>%
   left_join(CareSiteMap_Wide,by="care_site_id") %>%
@@ -72,33 +70,14 @@ visitcounts <- visit_occurrence %>%
          visit_concept_id == "9202" ~ "Outpatient",
          visit_concept_id == "9203" ~ "ER",
          visit_concept_id == "0" ~ "Unspecified",
-         TRUE ~ NA_character_))
+         TRUE ~ NA_character_)) %>%
+  filter(VisitAge>=0)
 
-range(visitcounts$VisitAge) # 0 - 89.99863
-stopifnot(min(visitcounts$VisitAge) >= 0)
-
-nrow(visitcounts) # 69307208 
-stopifnot(all(!is.na(visitcounts$care_site_id)))
-n_distinct(visitcounts$GRID) # 3213825
-visitcounts %>% filter(care_site_id !=0) %>% nrow() # 53934856 (77.8%)
-visitcounts %>% filter(care_site_id !=0) %>% summarise(n_distinct(care_site_id)) # 2544
-visitcounts %>% filter(care_site_id !=0 & !(specialty %in% c("Administrative", "Unclear"))) %>%
-  summarise(n_distinct(care_site_id)) # 2189 (86.0%)
-n_distinct(visitcounts$specialty) # 60
-visitcounts %>% filter(!(specialty %in% c("Administrative", "Unclear"))) %>%
-  summarise(n_distinct(specialty)) # 58
-visitcounts %>% filter(specialty == "Administrative") %>% summarise(n_distinct(care_site_id)) # 34 
-visitcounts %>% filter(care_site_id !=0 & specialty == "Administrative") %>% nrow() # 28870
-visitcounts %>% filter(care_site_id !=0 & specialty == "Unclear") %>% nrow() # 8051027
-visitcounts %>% filter(!(specialty %in% c("Administrative", "Unclear"))) %>% nrow() # 61227311
-visitcounts %>% filter(!is.na(specialty) & !(specialty %in% c("Administrative", "Unclear"))) %>% nrow() # 45854959
-visitcounts %>% filter(care_site_id!=0 & !(specialty %in% c("Administrative", "Unclear"))) %>% nrow() # 45854959
-visitcounts %>% filter(care_site_id!=0 & !(specialty %in% c("Administrative", "Unclear"))) %>% summarise(n_distinct(GRID)) # 2959903
-
-fwrite(visitcounts, file="./output/CareSiteDescriptives/all_visit_counts_AML_010325.csv")
+fwrite(visitcounts, file="./output/CareSiteDescriptives/all_visit_counts.csv")
 
 ## Make demographic summary for each care site
 patient_demographics <- visit_occurrence %>% 
+  filter(visit_start_date >= "1980-01-01") %>%
   select(GRID,care_site_id,visit_start_date) %>%
   left_join(person[,c(12,13,6)],by="GRID") %>%
   mutate(DOB = as.Date(birth_datetime),
@@ -106,6 +85,7 @@ patient_demographics <- visit_occurrence %>%
          VisitYear = format(as.Date(visit_start_date), "%Y"),
          VisitAge = as.numeric((visit_start_date-DOB)/365.25),
          Gender = gender_source_value) %>%
+  filter(VisitAge>=0) %>%
   group_by(care_site_id) %>%
   summarise(Person_N=n_distinct(GRID),
             Visits_N=n(),
@@ -124,71 +104,6 @@ patient_demographics <- visit_occurrence %>%
                                  ifelse(Adult_Percent_Numeric<25, "Pediatric-Specific",
                                         "NonSpecific"))) %>%
   select(-c("Adult_Percent_Numeric","Female_Percent_Numeric"))
-
-## averages across care sites
-## not including null care sites or unclear or administrative specialties
-patient_demographics_summary <- patient_demographics %>% 
-  left_join(CareSiteMap_Wide,by="care_site_id") %>%
-  filter(care_site_id != 0 & !(specialty %in% c("Administrative", "Unclear"))) %>%
-  summarise(Median_Person_N = median(Person_N),
-            Lower25_Person_N = quantile(Person_N, 0.25),
-            Upper25_Person_N = quantile(Person_N, 0.75),
-            Median_Visits_N = median(Visits_N),
-            Lower25_Visits_N = quantile(Visits_N, 0.25),
-            Upper25_Visits_N = quantile(Visits_N, 0.75),
-            Median_Age = median(Age_Median),
-            Lower25_Age = quantile(Age_Median, 0.25),
-            Upper25_Age = quantile(Age_Median, 0.75),
-            N_Adult_Specific = sum(AgeSpecific=="Adult-Specific"),
-            N_Pediatric_Specific = sum(AgeSpecific=="Pediatric-Specific"),
-            N_Age_NonSpecific = sum(AgeSpecific=="NonSpecific"),
-            N_Female_Specific = sum(GenderSpecific == "Female-Specific"),
-            N_Male_Specific = sum(GenderSpecific == "Male-Specific"),
-            N_Gender_NonSpecific = sum(GenderSpecific == "NonSpecific"),
-            N_Care_Site = n()
-  ) %>%
-  mutate(Percent_Adult_Specific = round(100*N_Adult_Specific/N_Care_Site,2),
-         Percent_Pediatric_Specific = round(100*N_Pediatric_Specific/N_Care_Site,2),
-         Percent_Age_NonSpecific = round(100*N_Age_NonSpecific/N_Care_Site,2),
-         Percent_Female_Specific = round(100*N_Female_Specific/N_Care_Site,2),
-         Percent_Male_Specific = round(100*N_Male_Specific/N_Care_Site,2),
-         Percent_Gender_NonSpecific = round(100*N_Gender_NonSpecific/N_Care_Site,2)
-  )
-
-## overall demographic summary (not grouped by care site)
-## not including null care sites or unclear or administrative specialties
-patient_demographics_overall <- visit_occurrence %>% 
-  left_join(CareSiteMap_Wide,by="care_site_id") %>%
-  filter(care_site_id != 0 & !(specialty %in% c("Administrative", "Unclear"))) %>%
-  select(GRID,care_site_id,visit_start_date) %>%
-  left_join(person[,c(12,13,6)],by="GRID") %>%
-  mutate(DOB = as.Date(birth_datetime),
-         visit_start_date = as.Date(visit_start_date),
-         VisitYear = format(as.Date(visit_start_date), "%Y"),
-         VisitAge = as.numeric((visit_start_date-DOB)/365.25),
-         Gender = gender_source_value) %>%
-  summarise(Person_N=n_distinct(GRID),
-            Visits_N=n(),
-            VisitYear_Median = median(as.numeric(VisitYear)),
-            Age_Median = median(VisitAge),
-            Adult_N = sum(VisitAge>18),
-            Adult_Percent_Numeric = round(100*Adult_N/Visits_N,2),
-            Adult_Percent = paste0(Adult_Percent_Numeric,'%'),
-            Female_N = sum(Gender=="F"),
-            Female_Percent_Numeric = round(100*Female_N/Visits_N,2),
-            Female_Percent = paste0(Female_Percent_Numeric,'%'),
-            GenderSpecific = ifelse(Female_Percent_Numeric>=75, "Female-Specific", 
-                                    ifelse(Female_Percent_Numeric<25, "Male-Specific",
-                                           "NonSpecific")),
-            AgeSpecific = ifelse(Adult_Percent_Numeric>=75, "Adult-Specific", 
-                                 ifelse(Adult_Percent_Numeric<25, "Pediatric-Specific",
-                                        "NonSpecific"))) %>%
-  select(-c("Adult_Percent_Numeric","Female_Percent_Numeric"))
-
-# Person_N Visits_N VisitYear_Median Age_Median  Adult_N Adult_Percent Female_N
-# 2959903 45854959             2016   46.29706 36166236        78.87% 26088861
-# Female_Percent GenderSpecific    AgeSpecific
-# 56.89%    NonSpecific Adult-Specific
 
 ######## Table 2: Characterize care site by visit number and visit type ######## 
 ## Calculate frequency of visit location (visit_concept_id) for each care_site_id
@@ -196,12 +111,14 @@ patient_demographics_overall <- visit_occurrence %>%
 # View(concept[concept$concept_id %in% c("9201","9202","9203"),])
 
 caresite_visitcounts <- visit_occurrence %>% 
+  filter(visit_start_date >= "1980-01-01") %>%
   left_join(person[,c(12,13,6)],by="GRID") %>%
   mutate(DOB = as.Date(birth_datetime),
          visit_start_date = as.Date(visit_start_date),
          VisitYear = format(as.Date(visit_start_date), "%Y"),
          VisitAge = as.numeric((visit_start_date-DOB)/365.25),
          Gender = gender_source_value) %>%
+  filter(VisitAge>=0) %>%
   mutate(visit_location = case_when(visit_concept_id == "9201" ~ "Inpatient",
                                     visit_concept_id == "9202" ~ "Outpatient",
                                     visit_concept_id == "9203" ~ "ER",
@@ -211,69 +128,15 @@ caresite_visitcounts <- visit_occurrence %>%
   summarise(Visits_N=n(),
             Outpt_N = sum(visit_location=="Outpatient"),
             Outpt_Percent = paste0(round(100*Outpt_N/Visits_N,2),'%'),
-            Inpt_N = sum(visit_location=="Inpatient"),
-            Inpt_Percent = paste0(round(100*Inpt_N/Visits_N,2),'%'),
-            Emer_N = sum(visit_location=="ER"),
-            Emer_Percent = paste0(round(100*Emer_N/Visits_N,2),'%'),
-            Unspecified_N = sum(visit_location=="Unspecified"),
-            Unspecified_Percent = paste0(round(100*Unspecified_N/Visits_N,2),'%'),
-            FirstVisit=min(visit_start_date), 
-            LastVisit=max(visit_start_date))
-
-
-## averages across care sites
-## not including null care sites or unclear or administrative specialties
-caresite_visitcounts_summary <- caresite_visitcounts %>% 
-  left_join(CareSiteMap_Wide,by="care_site_id") %>%
-  filter(care_site_id != 0 & !(specialty %in% c("Administrative", "Unclear"))) %>%
-  mutate(Outpt_Percent_Numeric = Outpt_N / Visits_N, 
-         Inpt_Percent_Numeric = Inpt_N / Visits_N,
-         Emer_Percent_Numeric = Emer_N / Visits_N,
-         Unspecified_Percent_Numeric = Unspecified_N / Visits_N,
-         SettingSpecific = ifelse(Outpt_Percent_Numeric>=0.75, "Outpatient", 
-                                    ifelse(Inpt_Percent_Numeric>=0.75, "Inpatient",
-                                           ifelse(Emer_Percent_Numeric>=0.75, "ER",
-                                                  "Mixed")))) %>% 
-  summarise(N_Outpt_Specific = sum(SettingSpecific=="Outpatient"),
-            N_Inpt_Specific = sum(SettingSpecific=="Inpatient"),
-            N_ER_Specific = sum(SettingSpecific=="ER"),
-            N_Mixed = sum(SettingSpecific=="Mixed"),
-            N_Care_Site = n()
-  ) %>%
-  mutate(Percent_Outpt_Specific = round(100*N_Outpt_Specific/N_Care_Site,2),
-         Percent_Inpt_Specific = round(100*N_Inpt_Specific/N_Care_Site,2),
-         Percent_ER_Specific = round(100*N_ER_Specific/N_Care_Site,2),
-         Percent_Mixed = round(100*N_Mixed/N_Care_Site,2))
-
-## overall encounter type summary (not grouped by care site)
-## not including null care sites or unclear or administrative specialties
-caresite_visitcounts_overall <- visit_occurrence %>% 
-  left_join(CareSiteMap_Wide,by="care_site_id") %>%
-  filter(care_site_id != 0 & !(specialty %in% c("Administrative", "Unclear"))) %>%
-  left_join(person[,c(12,13,6)],by="GRID") %>%
-  mutate(DOB = as.Date(birth_datetime),
-         visit_start_date = as.Date(visit_start_date),
-         VisitYear = format(as.Date(visit_start_date), "%Y"),
-         VisitAge = as.numeric((visit_start_date-DOB)/365.25),
-         Gender = gender_source_value) %>%
-  mutate(visit_location = case_when(visit_concept_id == "9201" ~ "Inpatient",
-                                    visit_concept_id == "9202" ~ "Outpatient",
-                                    visit_concept_id == "9203" ~ "ER",
-                                    visit_concept_id == "0" ~ "Unspecified",
-                                    TRUE ~ NA_character_)) %>%
-  summarise(Visits_N=n(),
-            Outpt_N = sum(visit_location=="Outpatient"),
-            Outpt_Percent = paste0(round(100*Outpt_N/Visits_N,2),'%'),
-            Inpt_N = sum(visit_location=="Inpatient"),
-            Inpt_Percent = paste0(round(100*Inpt_N/Visits_N,2),'%'),
-            Emer_N = sum(visit_location=="ER"),
-            Emer_Percent = paste0(round(100*Emer_N/Visits_N,2),'%'),
-            Unspecified_N = sum(visit_location=="Unspecified"),
-            Unspecified_Percent = paste0(round(100*Unspecified_N/Visits_N,2),'%'),
-            ### @Allie: This is what I added to the script
             Outpt_Percent_Numeric = round(100*Outpt_N/Visits_N,2),
+            Inpt_N = sum(visit_location=="Inpatient"),
+            Inpt_Percent = paste0(round(100*Inpt_N/Visits_N,2),'%'),
             Inpt_Percent_Numeric = round(100*Inpt_N/Visits_N,2),
+            Emer_N = sum(visit_location=="ER"),
+            Emer_Percent = paste0(round(100*Emer_N/Visits_N,2),'%'),
             Emer_Percent_Numeric = round(100*Emer_N/Visits_N,2),
+            Unspecified_N = sum(visit_location=="Unspecified"),
+            Unspecified_Percent = paste0(round(100*Unspecified_N/Visits_N,2),'%'),
             Unspecified_Percent_Numeric = round(100*Unspecified_N/Visits_N,2),
             MajorityVisitType = case_when(Outpt_Percent_Numeric >= 0.75 ~ "Outpatient", 
                                            Inpt_Percent_Numeric >= 0.75 ~ "Inpatient",
@@ -283,16 +146,9 @@ caresite_visitcounts_overall <- visit_occurrence %>%
             LastVisit=max(visit_start_date)) %>%
   select(-c("Visits_N","Outpt_Percent_Numeric","Inpt_Percent_Numeric","Emer_Percent_Numeric","Unspecified_Percent_Numeric"))
 
-caresite_visitcounts_overall
-# Outpt_N Outpt_Percent Inpt_N Inpt_Percent  Emer_N Emer_Percent
-# 40222957  87.72%  2722511 5.94% 1291659 2.82%
-# Unspecified_N Unspecified_Percent FirstVisit  LastVisit
-# 1617832 3.53% 1998-01-01  2023-03-31
-
-
 ######## Table 3: Top ICD and CPT codes for each care site ######## 
 ### Import ICD codes and create phecodes 
-x_codes <- as.data.frame(fread("data/sd_data_qc/20230607_sd_pull_x_codes_dates_cleaned_overlapping_grids.txt"))
+x_codes <- as.data.frame(fread("/data/davis_lab/shared/phenotype_data/biovu/delivered_data/sd_wide_pull/20230607_pull/20230607_sd_pull_x_codes_all.txt.gz"))
 
 ## ICD-9-CM
 x_codes_icd9cm <- subset(x_codes, vocabulary_id == "ICD9CM")
