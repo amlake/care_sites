@@ -263,10 +263,15 @@ FilteredCareSites %>% group_by(x_type) %>% summarise(min(VisitYear_Median))
 # Create year period factor
 hist_visityear <- FilteredCareSites %>%
   mutate(Period = factor(ifelse(VisitYear_Median < 2017, "Star Panel", "eStar"), levels = c("Star Panel", "eStar"))) %>%
-  ggplot(aes(x = round(VisitYear_Median, 0), fill = Period, color = Period)) +
-  geom_histogram(bins = 40, alpha = 0.7, position = "identity") +
+  mutate(VisitYear_Median = round(VisitYear_Median, 0)) %>%
+  group_by(VisitYear_Median, Period) %>% 
+  summarise(count = n()) %>% 
+  ggplot(aes(x = VisitYear_Median, y = count, fill = Period, color = Period)) +
+  geom_bar(alpha = 0.7, stat = "identity") +
   scale_fill_manual(values = c("#3262AB", "#DE6757")) +
   scale_color_manual(values = c("black", "black")) +
+  scale_x_continuous(breaks = seq(1995, 2025, by = 5), limits = c(1995, 2025)) +
+  scale_y_continuous(breaks = seq(0, 600, 100)) +
   labs(x = "Median Encounter Year", y = "Number of Clinical Sites", fill = "Time Period", color = "Time Period") +
   theme_minimal() +
   theme(
