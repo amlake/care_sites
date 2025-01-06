@@ -19,8 +19,8 @@ source("/data/davis_lab/allie/care_sites/scripts/mdd_application/manhattan_bar.R
 ```
 
 ```{r}
-map <- fread("/data/davis_lab/allie/care_sites/output/CareSiteMap_Multispecialty_Long_UPDATED_111524.csv")
-care_site_names <- read.xlsx("/data/davis_lab/allie/care_sites/output/CareSite_VisitDetailCount_UPDATED_111524.xlsx") %>%
+map <- fread("/data/davis_lab/allie/care_sites/output/CareSiteMap_Multispecialty_Long_UPDATED_AML_010425.csv")
+care_site_names <- read.xlsx("/data/davis_lab/allie/care_sites/output/CareSite_VisitDetailCount_UPDATED_AML_010425.xlsx") %>%
   select(care_site_id, care_site_name) %>% 
   data.table() %>% 
   unique()
@@ -49,8 +49,8 @@ nrow(meds)
 ## remove if start_date > end_date
 meds <- meds[is.na(end_date) | as.Date(start_date) <= as.Date(end_date)]
 
-## remove if start date before 1990 or after 3/31/2023 (date of last ICD or CPT code in the June 2023 SD pull)
-meds <- meds[start_date >= as.Date("1990-01-01") & start_date < as.Date("2023-03-31")]
+## remove if start date before 1998 (beginning of StarPanel) or after 3/31/2023 (date of last ICD or CPT code in the June 2023 SD pull)
+meds <- meds[start_date >= as.Date("1998-01-01") & start_date < as.Date("2023-03-31")]
 
 ## reformat med column
 meds[,matched_drug_generic := tolower(matched_drug_generic)]
@@ -84,8 +84,8 @@ meds_earliest <- unique(meds[start_date == earliest_code, .(GRID, start_date, vi
 meds_earliest[, meds := paste0(unique(matched_drug_generic), collapse = ", "), by = GRID]
 meds_earliest <- unique(meds_earliest[,.(GRID,start_date,visit_occurrence_id,meds, drug_type_concept_name)])
 
-n_distinct(meds_earliest$GRID) # 325,698 total individuals with an antidepressant prescription or administration
-nrow(meds_earliest) # 458,063 total entries
+n_distinct(meds_earliest$GRID) # 325698 total individuals with an antidepressant prescription or administration
+nrow(meds_earliest) # 458063 total entries
 ```
 
 ```{r}
@@ -110,11 +110,11 @@ visit_occurrence_id missingness appears to vary by medication record type
 
 ## Map antidepressants to care sites
 Map by *date* instead of visit_occurrence_id due to missingness in that column.
-```{r, eval = FALSE}
+```{r, eval = TRUE}
 ## load all visit data from 2023 SD pull that map to a defined care site (not Unclear or Administrative)
 ## (generated in compile_data.R)
-vdat <- readRDS("/data/davis_lab/allie/care_sites/data/mdd_application/20230607_sd_pull_visit_occurrence_defined_sites.Rds")
-n_distinct(vdat$GRID) # 3,083,596 total individuals with a visit mapped to a "defined" care site 
+vdat <- readRDS("/data/davis_lab/allie/care_sites/data/mdd_application/20230607_sd_pull_visit_occurrence_defined_sites_010525.Rds")
+n_distinct(vdat$GRID) # 2959903 total individuals with a visit mapped to a "defined" care site 
 
 ## get the total individual count per care site and per specialty
 vdat[,cs_n_grid := n_distinct(.SD$GRID), by = care_site_id]
@@ -122,35 +122,35 @@ vdat[,spec_n_grid := n_distinct(.SD$GRID), by = SpecialtyLong]
 
 ## map earliest antidepressant icd codes to care sites via visit_occurrence_id
 med_visits_by_id <- merge(meds_earliest, vdat, by = c("GRID","visit_occurrence_id"))
-saveRDS(med_visits_by_id, "/data/davis_lab/allie/care_sites/data/mdd_application/20230607_sd_pull_visit_occurrence_earliest_med_joined_by_visit_id.Rds")
+saveRDS(med_visits_by_id, "/data/davis_lab/allie/care_sites/data/mdd_application/20230607_sd_pull_visit_occurrence_earliest_med_joined_by_visit_id_010525.Rds")
 
 ## map earliest antidepressant icd codes to care sites via date
 med_visits_by_date <- merge(meds_earliest, vdat, by = "GRID", allow.cartesian = TRUE)
 med_visits_by_date <- med_visits_by_date[start_date >= visit_start_date & start_date <= visit_end_date]
-saveRDS(med_visits_by_date, "/data/davis_lab/allie/care_sites/data/mdd_application/20230607_sd_pull_visit_occurrence_earliest_med_joined_by_date.Rds")
+saveRDS(med_visits_by_date, "/data/davis_lab/allie/care_sites/data/mdd_application/20230607_sd_pull_visit_occurrence_earliest_med_joined_by_date_010525.Rds")
 
-n_distinct(med_visits_by_id$GRID) # 129975 individuals with earliest antidepressant mapping to a visit with a DEFINED CARE SITE by date (39.9% of total with an antidepressant)
-n_distinct(med_visits_by_date$GRID) # 215920 individuals with earliest antidepressant mapping to a visit with a DEFINED CARE SITE by date (66.3% of total with an antidepressant)
+n_distinct(med_visits_by_id$GRID) # 129973 individuals with earliest antidepressant mapping to a visit with a DEFINED CARE SITE by date (39.9% of total with an antidepressant)
+n_distinct(med_visits_by_date$GRID) # 215510 individuals with earliest antidepressant mapping to a visit with a DEFINED CARE SITE by date (66.2% of total with an antidepressant)
 ```
 
 ```{r}
 ## load file generated above (joined by date)
-med_visits <- readRDS("/data/davis_lab/allie/care_sites/data/mdd_application/20230607_sd_pull_visit_occurrence_earliest_med_joined_by_date.Rds")
+med_visits <- readRDS("/data/davis_lab/allie/care_sites/data/mdd_application/20230607_sd_pull_visit_occurrence_earliest_med_joined_by_date_010525.Rds")
 head(med_visits)
-nrow(med_visits) # 393712
-n_distinct(med_visits$GRID) # 215920
+nrow(med_visits) # 393300
+n_distinct(med_visits$GRID) # 215510
 ```
 
 ```{r}
-## retain unique entries (by GRID, med start date, and care site id)
+## retain unique entries (by GRID, med start date, care site, and specialty)
 ## there will be duplicates if a care site is mapped to multiple specialties
 med_visits <- unique(med_visits[,.(GRID,start_date,care_site_id,care_site_name,SpecialtyLong,cs_n_grid,spec_n_grid)])
-nrow(med_visits) # 262227
-n_distinct(med_visits$GRID) # 215920
+nrow(med_visits) #  261816
+n_distinct(med_visits$GRID) # 215510
 
-nrow(unique(med_visits[,.(GRID,start_date,care_site_id)])) # 246067 - number of distinct GRID/care site combos
-nrow(unique(med_visits[,.(GRID,start_date,care_site_id,care_site_name)])) # 246067 - number of distinct GRID/care site combos (same as above)
-nrow(unique(med_visits[,.(GRID,SpecialtyLong)])) # 254603 - number of distinct GRID/specialty combos
+nrow(unique(med_visits[,.(GRID,start_date,care_site_id)])) # 245657 - number of distinct GRID/care site combos
+nrow(unique(med_visits[,.(GRID,start_date,care_site_id,care_site_name)])) # 245657 - number of distinct GRID/care site combos (same as above)
+nrow(unique(med_visits[,.(GRID,SpecialtyLong)])) # 254192 - number of distinct GRID/specialty combos
 ```
 
 Even after restricting to the earliest antidepressant for each individual and mapping to defined care sites, there are still many individuals with meds mapping to multiple different care sites on the same day.
@@ -165,7 +165,7 @@ paste0("Out of all patients with a med, for what % of them does their earliest c
 ## Get proportions of individuals with antidepressants at each care site and specialty
 Normalize by total individual count per care site or specialty.
 ```{r}
-n_med <- n_distinct(med_visits$GRID) # 215920 - this will be the denominator for the med-specific frequencies
+n_med <- n_distinct(med_visits$GRID) # 215510 - this will be the denominator for the med-specific frequencies
 
 med_visits[,n_med_per_site := n_distinct(.SD$GRID), by = care_site_id]
 med_visits[,n_med_per_specialty := n_distinct(.SD$GRID), by = SpecialtyLong]
@@ -179,7 +179,7 @@ specialty_summary_meds[,freq_med_per_specialty := n_med_per_specialty / n_med]
 specialty_summary_meds[,freq_med_per_specialty_norm := n_med_per_specialty / n_med / spec_n_grid]
 ```
 
-### Make supplemental tables
+## Make supplemental tables
 ```{r}
 care_site_supp <- copy(care_site_summary_meds)
 names(care_site_supp) <- c("care_site_id", "care_site_name", "specialty", "n_antidepressant_patients_per_site", "n_total_patients_per_site", "prop_antidepressant_patients_per_site","prop_antidepressant_patients_per_site_normalized")
@@ -195,7 +195,7 @@ addWorksheet(wb, "Care Site Summary")
 writeData(wb, "Care Site Summary", care_site_supp)
 addWorksheet(wb, "Specialty Summary")
 writeData(wb, "Specialty Summary", specialty_supp)
-saveWorkbook(wb, "/data/davis_lab/allie/care_sites/output/mdd_application/SupplementalTable_antidepressant_care_site_specialty_summary.xlsx", overwrite = TRUE)
+saveWorkbook(wb, "/data/davis_lab/allie/care_sites/output/mdd_application/SupplementalTable_antidepressant_care_site_specialty_summary_010525.xlsx", overwrite = TRUE)
 ```
 
 ```{r}
@@ -204,7 +204,7 @@ med_date <- unique(med_visits[,.(GRID, start_date)])
 
 # re-extract med records
 med_list <- merge(meds, med_date, by = c("GRID", "start_date")) 
-n_distinct(med_list$GRID) # 215920
+n_distinct(med_list$GRID) # 215510
 
 med_list <- unique(med_list[,.(GRID, generic_name = toupper(matched_drug_generic))])
 
@@ -225,7 +225,7 @@ med_list_tbl <- med_list %>%
 wb <- createWorkbook()
 addWorksheet(wb, "Antidepressant List")
 writeData(wb, "Antidepressant List", med_list_tbl)
-saveWorkbook(wb, "/data/davis_lab/allie/care_sites/output/mdd_application/SupplementalTable_antidepressant_list.xlsx", overwrite = TRUE)
+saveWorkbook(wb, "/data/davis_lab/allie/care_sites/output/mdd_application/SupplementalTable_antidepressant_list_010525.xlsx", overwrite = TRUE)
 ```
 
 ## Plots
@@ -256,7 +256,7 @@ p2 <- caresite_manhattan_bar(caresite_plot_df_norm, points = T, flip = T) +
 
 p <- ggarrange(p1, p2, ncol=1,nrow=2)
 
-pdf("/data/davis_lab/allie/care_sites/output/mdd_application/earliest_med_site_counts_mapped_by_date_miami_points.pdf", width = 11, height = 8.5)
+pdf("/data/davis_lab/allie/care_sites/output/mdd_application/earliest_med_site_counts_mapped_by_date_miami_points_010525.pdf", width = 11, height = 8.5)
 print(p)
 dev.off()
 ```

@@ -171,7 +171,7 @@ caresite_visitcounts <- visit_occurrence %>%
 
 ######## Table 3: Top ICD and CPT codes for each care site ######## 
 ### Import ICD codes and create phecodes 
-# x_codes <- as.data.frame(fread("data/sd_data_qc/20230607_sd_pull_x_codes_dates_cleaned_overlapping_grids.txt"))
+x_codes <- as.data.frame(fread("data/sd_data_qc/20230607_sd_pull_x_codes_dates_cleaned_overlapping_grids.txt"))
 
 ## @John I'm using the R PheWAS mapping function for simplicity
 ## Also it should handle the many-to-many mapping between ICD codes and phecodes by using PheWAS::phecode_rollup_map in addition to PheWAS::phecode_map

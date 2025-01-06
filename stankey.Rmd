@@ -18,11 +18,11 @@ setwd("/data/davis_lab/allie/care_sites/scripts")
 https://rpubs.com/DragonflyStats/Sankey-networkD3
 
 ```{r}
-## load care site map and annotaton files
-map <- fread("/data/davis_lab/allie/care_sites/output/CareSiteMap_Multispecialty_Long_UPDATED_111524.csv")
-site_info <- fread("/data/davis_lab/allie/care_sites/output/CareSiteDescriptives/omop_care_site_info.csv")
-site_phe <- fread("/data/davis_lab/allie/care_sites/output/CareSiteDescriptives/top5phecodes_by_caresite.csv")
-site_visits <- fread("/data/davis_lab/allie/care_sites/output/CareSiteDescriptives/visit_counts_by_caresite.csv")
+## load care site map (long format) and annotaton files
+map <- fread("/data/davis_lab/allie/care_sites/output/CareSiteMap_Multispecialty_Long_UPDATED_AML_010425.csv")
+site_info <- fread("/data/davis_lab/allie/care_sites/output/CareSiteDescriptives_AML_010425/omop_care_site_info.csv")
+site_phe <- fread("/data/davis_lab/allie/care_sites/output/CareSiteDescriptives_AML_010425/top5phecodes_by_caresite_wide.csv")
+site_visits <- fread("/data/davis_lab/allie/care_sites/output/CareSiteDescriptives_AML_010425/visit_counts_by_caresite.csv")
 
 map <- merge(map, site_info, by = "care_site_id")
 map <- merge(map, site_visits, by = "care_site_id")
@@ -55,8 +55,8 @@ stopifnot(n_distinct(map$care_site_id) == n_distinct(map$care_site_name))
 
 ### Select top 50 sites (by visit count) within each category (medical, surgical, other)
 ```{r, eval = TRUE}
-Specialties_3group <- fread("/data/davis_lab/allie/care_sites/output/Figures/Descriptives/Specialties_NCareSites_Label_ANNOTATED.csv")
-map <- merge(map, Specialties_3group, by = "SpecialtyLong")
+Specialties_3group <- fread("/data/davis_lab/allie/care_sites/output/Figures/Descriptives/Specialties_NCareSites_Label_ANNOTATED_AML_010425.csv")
+map <- merge(map, Specialties_3group, by.x = "SpecialtyLong", by.y = "MappedSpecialty")
 
 setorder(map, -Visits_N)
 map[,visit_rank := 1:.N, by = Group]
@@ -164,7 +164,7 @@ sankey <- function(Map) {
 }
 ```
 
-```{r}
+```{r, fig.width=10, fig.height=10}
 sankey(map[Group == "Medical"])
 sankey(map[Group == "Surgical"])
 sankey(map[Group == "Other"])

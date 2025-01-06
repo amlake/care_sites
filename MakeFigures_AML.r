@@ -314,7 +314,13 @@ spec_caresite_ct <- FilteredCareSites %>%
 write.csv(spec_caresite_ct, file="./output/Figures/Descriptives/Specialties_NCareSites_Label_ForAnnotation_AML_010425.csv", row.names = F)
 
 x_labels <- vroom("./output/Figures/Descriptives/Specialties_NCareSites_Label_ANNOTATED.csv", col_select = c(1, 3))
+fwrite(x_labels_new, "./output/Figures/Descriptives/Specialties_NCareSites_Label_ANNOTATED_AML_010425.csv")
 
+## keep labels, update N per site with new numbers
+x_labels_new <- x_labels %>% 
+  left_join(spec_caresite_ct, by="MappedSpecialty") %>% 
+  select(MappedSpecialty, n, Group)
+  
 # Make dataset with primary specialties only
 spec_visit_ct <- FilteredCareSites %>% 
   group_by(MappedSpecialty) %>% 
@@ -349,7 +355,30 @@ specialty_names <- c("HemeOnc" = "Hematology/Oncology", "OBGYN" = "Obstetrics/Gy
 figure2$MappedSpecialty <- str_replace_all(figure2$MappedSpecialty, specialty_names)
 figure2$MappedSpecialty <- str_replace_all(figure2$MappedSpecialty, "([a-z])([A-Z])", "\\1 \\2")
 
-# Create stacked bar plot
+# Create grouping variable for setting colors
+figure2 <- figure2 %>%
+  mutate(setting_group = paste0(Group, "_", Setting)) %>%
+  mutate(setting_group = factor(setting_group, levels = rev(c("Medical_Outpatient", "Medical_Inpatient", "Medical_Emergency", "Medical_Unspecified",
+                                                     "Surgical_Outpatient", "Surgical_Inpatient", "Surgical_Emergency", "Surgical_Unspecified",
+                                                     "Other_Outpatient", "Other_Inpatient", "Other_Emergency", "Other_Unspecified"))))
+
+color_key <- data.frame(setting_group = levels(figure2$setting_group)) %>% 
+  mutate(setting_group_colors = case_when(
+      setting_group == "Medical_Outpatient" ~ "#E64B35",
+      setting_group == "Medical_Inpatient" ~ "#e64a358a",
+      setting_group == "Medical_Emergency" ~ "#e64a351b",
+      setting_group == "Surgical_Outpatient" ~ "#3C5488",
+      setting_group == "Surgical_Inpatient" ~ "#3c548881",
+      setting_group == "Surgical_Emergency" ~ "#3c548812",
+      setting_group == "Other_Outpatient" ~ "#00A087",
+      setting_group == "Other_Inpatient" ~ "#00a0887e",
+      setting_group == "Other_Emergency" ~ "#00a08813",
+      setting_group %in% c("Medical_Unspecified", "Surgical_Unspecified", "Other_Unspecified") ~ "darkgrey"
+  ))
+
+color_key <- setNames(color_key$setting_group_colors, color_key$setting_group)
+
+## Make Figure 2 top panel (care site counts by specialty)
 count_caresites_byspecialty <- ggplot(figure2 %>% distinct(MappedSpecialty, n_care_sites, Group), 
        aes(x = reorder(MappedSpecialty, -n_care_sites), y = n_care_sites, fill = Group)) +
   stat_summary(geom = "col", fun = sum, width = 0.7, col = "black", alpha=1) +
@@ -358,19 +387,24 @@ count_caresites_byspecialty <- ggplot(figure2 %>% distinct(MappedSpecialty, n_ca
   guides(color = "none") +
   labs(x = " ", y = "Number of Care Sites", fill = "Specialty Group") +
   theme_bw() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "top")
+  theme(axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "top",
+        plot.margin =  margin(t = 0, r = 0.1, b = -0.5, l = 0.1, unit = "cm"))
 
+## Make Figure 2 bottom panel (stacked bar plot with visit counts by specialty)
 count_visits_byspecialty <- ggplot(figure2, 
-       aes(x = reorder(MappedSpecialty, -n_care_sites), y = n_visits_millions*Proportion, fill = Setting, color = Setting)) +
-  geom_bar(stat = "identity") +
+       aes(x = reorder(MappedSpecialty, -n_care_sites), y = n_visits_millions*Proportion, fill = setting_group)) +
+  geom_bar(stat = "identity", color = "black", size = 0.2) +
+  scale_fill_manual(values = color_key) +
   scale_y_continuous(labels = scales::comma, expand = expansion(mult = c(0, 0.05))) +
-  guides(color = "none") +
+  guides(fill = guide_legend(nrow = 4, override.aes = list(size = 0.5))) +
   labs(x = " ", y = "Number of Visits (Millions)", fill = "Encounter Setting") +
   theme_bw() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "top")
+  theme(axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "top",
+        plot.margin =  margin(t = 0, r = 0.1, b = -0.2, l = 0.1, unit = "cm"),
+        legend.title = element_text(size = 8), legend.text = element_text(size = 6))
 
 pdf("output/Figures/Descriptives/Figure2_Specialties_NCareSites_NVisits_AML_010425.pdf", width = 7, height = 7)
-ggarrange(count_caresites_byspecialty, count_visits_byspecialty, nrow=2, ncol=1, heights = c(1, 1.5))
+ggarrange(count_caresites_byspecialty, count_visits_byspecialty, nrow=2, ncol=1, heights = c(1.5, 2))
 dev.off()
 
 ###### Supplemental Figure 2: UpSet plot of specialty combinations ###### 

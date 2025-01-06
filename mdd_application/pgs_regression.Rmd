@@ -48,7 +48,7 @@ rounding_func <- function(xx) {
     # y <- formatC(xx, format = "e", digits = 2)
     y <- "<0.001"
   } else if (round(xx,2) <0.01) { # <0.01 and ≥0.001 -> 3 digits 
-    y <- formatC(xx, format = "f", digits = 3)
+    y <- formatC(xx, format = "f", digits = 3) 
   } else { # ≥0.01 -> 2 digits
     y <- formatC(xx, format = "f", digits = 2)
   }
@@ -56,44 +56,60 @@ rounding_func <- function(xx) {
 }
 ```
 
-## Load data
+## Load data, define code-based depression phenotypes
 NOTE: the variable names below use "MDD", but the phenotype is actually "depression" (phecode 296.2).
 ```{r}
 ## load care site map
-map <- fread("/data/davis_lab/allie/care_sites/output/CareSiteMap_Multispecialty_Long_UPDATED_111524.csv")
+map <- fread("/data/davis_lab/allie/care_sites/output/CareSiteMap_Multispecialty_Long_UPDATED_AML_010425.csv")
 
-## load covariates, PGS, and phecodes
+## load median age at ICD code
+med_age <- fread("/data/davis_lab/shared/phenotype_data/biovu/delivered_data/sd_wide_phewas_covariates/20230607_sd_wide_covariates_121023.txt") %>%
+  select(GRID, median_age)
+
+## load covariates and depression PGS
 ## see compile_data.R for details on how this file was created
-dat <- readRDS("/data/davis_lab/allie/care_sites/data/mega_eur_afr_covariates_pgs_phecodes_092424.Rds")
-dat <- dat[genetic_ancestry == "EUR"]
+dat <- readRDS("/data/davis_lab/allie/care_sites/data/mega_eur_covariates_psych_pgs_010525.Rds") %>%
+  filter(genetic_ancestry == "EUR") %>% 
+  select(c("GRID", sex = gender_source_value, paste0("PC", 1:10), "pgs.dep.scale")) %>%
+  left_join(med_age, by = "GRID") 
+```
 
-## remove phecode columns except for depression
-setnames(dat, "296.22", "mdd")
-setnames(dat, "296.2", "dep")
+### Define code-based depression phenotypes
+```{r}
+## Load ICD code file generated in mdd_care_sites.Rmd, filter to distinct code-dates
+# This is everyone in the SD with at least 1 depression code
+# Case = has ≥1 code on ≥2 distinct dates
+# Control = 0 codes
+# Excluded = only 1 code
+icd_dep <- readRDS("/data/davis_lab/allie/care_sites/data/mdd_application/20230607_sd_pull_x_codes_icd_depression_010525.Rds") %>% 
+  select(GRID, entry_date) %>%
+  distinct() %>% 
+  group_by(GRID) %>% 
+  summarise(n = n()) %>%
+  mutate(mdd = case_when(n >=2 ~ 1, n == 0 ~ 0, n==1 ~ -9)) %>% 
+  select(GRID, mdd)
 
-## check that everyone who is a case for 296.22 is also a case for 296.2
-stopifnot(nrow(dat[dep == 0 & mdd == 1]) == 0)
+stopifnot(nrow(icd_dep %>% filter(mdd == 0)) == 0)
 
-phe_cols<- names(dat)[grepl("^[[:digit:]]", names(dat))]
-dat <- dat[,-phe_cols,with=F]
-dat[, mdd := NULL]
-setnames(dat,"dep","mdd")
+## Combine with full cohort
+dat <- dat %>% 
+  left_join(icd_dep, by = "GRID") %>%
+  mutate(mdd = ifelse(is.na(mdd), 0, mdd)) %>%
+  as.data.frame() %>% data.table()
+```
 
-## recode pheno columns
-dat$mdd <- as.numeric(dat$mdd)
-dat[is.na(mdd), mdd := -9]
+### Remove individuals with missing data
+There are 35 individuals in the PGS cohort with missing median age.
+This is because these individuals have no ICD codes. The median age was calculated as the median age at the first ICD code, so these individuals have no median age.
+```{r}
+dat %>% filter(is.na(median_age)) %>% nrow()
 
-## remove unneeded columns
-dat[, pgs.scz.scale := NULL]
-dat[, pgs.bd.scale := NULL]
-dat[, pgs.sle.scale := NULL]
-
-head(dat)
+dat <- dat %>% filter(!is.na(median_age))
 ```
 
 ```{r}
-## load visit info
-visit <- readRDS("/data/davis_lab/allie/care_sites/data/mdd_application/20230607_sd_pull_mega_grids_visit_occurrence_defined_sites.Rds")
+## load visits
+visit <- readRDS("/data/davis_lab/allie/care_sites/data/mdd_application/20230607_sd_pull_mega_grids_visit_occurrence_defined_sites_010525.Rds")
 ```
 
 ## Depression definitions
@@ -151,7 +167,7 @@ p <- dat_plot %>%
   theme_bw() +
   theme(legend.position = "none")
 
-pdf("/data/davis_lab/allie/care_sites/output/mdd_application/mdd_raw_pgs_comparison.pdf", width = 6, height = 5)
+pdf("/data/davis_lab/allie/care_sites/output/mdd_application/mdd_raw_pgs_comparison_010525.pdf", width = 6, height = 5)
 print(p)
 dev.off()
 ```
@@ -211,7 +227,7 @@ p <- res_combined %>%
         axis.title.x = element_text(margin = margin(t = 10)),
         panel.grid.major.y = element_blank()) 
 
-pdf("/data/davis_lab/allie/care_sites/output/mdd_application/mdd_pgs_regression_forest_plot.pdf", width = 3, height = 1.5)
+pdf("/data/davis_lab/allie/care_sites/output/mdd_application/mdd_pgs_regression_forest_plot_010525.pdf", width = 3, height = 1.5)
 print(p)
 dev.off()
 ```
@@ -221,7 +237,7 @@ print(p)
 rm(p)
 ```
 
-### Supplemental table
+## Supplemental tables
 ```{r}
 supp_table <- copy(res_combined) %>% 
   select(term, beta = estimate, std.error, statistic, OR, ci.lower, ci.upper, p.value, n_total, n_cases, pheno) %>%
@@ -233,5 +249,12 @@ addWorksheet(wb, "Code only")
 writeData(wb, "Code only", supp_table[pheno == "MDD"] %>% select(-pheno))
 addWorksheet(wb, "Code + psych. visit")
 writeData(wb, "Code + psych. visit", supp_table[pheno == "MDD+psych_site"] %>% select(-pheno))
-saveWorkbook(wb, "/data/davis_lab/allie/care_sites/output/mdd_application/SupplementalTable_depression_pgs_regression_results.xlsx", overwrite = TRUE)
+saveWorkbook(wb, "/data/davis_lab/allie/care_sites/output/mdd_application/SupplementalTable_depression_pgs_regression_results_010525.xlsx", overwrite = TRUE)
+```
+
+### Save analysis cohort for supplemental table created in depression_analyses_descriptive_table.R
+```{r}
+dat %>% filter(mdd!=-9) %>%
+  select(GRID, sex, median_age, mdd, mdd_pheno, psych_cohort, mdd_psych_site) %>%
+  fwrite("/data/davis_lab/allie/care_sites/data/mdd_application/mdd_pgs_regression_cohort_010525.csv")
 ```

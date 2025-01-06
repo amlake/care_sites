@@ -34,9 +34,9 @@ caresite_manhattan_bar <- function(dat, points = FALSE, flip = FALSE) {
 
     # Create group to alternate light/dark shades
     group_colors <- c(
-        "Medical_light" = "#a6cee3", "Medical_dark" = "#1f78b4",
-        "Surgical_light" = "#b2df8a", "Surgical_dark" = "#33a02c",
-        "Other_light" = "#fb9a99", "Other_dark" = "#e31a1c"
+        "Medical_light" = "#e64a358a", "Medical_dark" = "#E64B35",
+        "Surgical_light" = "#3c548881", "Surgical_dark" = "#3C5488",
+        "Other_light" = "#00a0887e", "Other_dark" = "#00A087"
     )
 
     # Create a base x-axis value for each specialty
