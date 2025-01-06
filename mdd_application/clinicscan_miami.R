@@ -110,7 +110,7 @@ caresite_manhattan_bar <- function(dat, points = FALSE, flip = FALSE) {
             axis.title.y = element_text(hjust = 0.5),
             legend.position = "none",
             panel.grid.major.x = element_blank(), panel.grid.minor.x = element_blank(),
-            plot.margin =  margin(t = 0, r = 0, b = -0.9, l = 0, unit = "cm")
+            plot.margin =  margin(t = 0.2, r = 0, b = -0.9, l = 0.2, unit = "cm")
         )
 
     if (flip == TRUE) {
