@@ -158,7 +158,7 @@ dat_plot <-  dat %>%
   mutate(mdd_pheno = as.character(mdd_pheno)) %>%
   data.table()
 
-p <- dat_plot %>%
+p1 <- dat_plot %>%
   ggplot(aes(x = mdd_pheno, fill = mdd_pheno, pgs.dep.scale)) +
   geom_violin() +
   geom_boxplot(width = 0.3) +
@@ -168,13 +168,12 @@ p <- dat_plot %>%
   theme(legend.position = "none")
 
 pdf("/data/davis_lab/allie/care_sites/output/mdd_application/mdd_raw_pgs_comparison_010525.pdf", width = 6, height = 5)
-print(p)
+print(p1)
 dev.off()
 ```
 
 ```{r}
-print(p)
-rm(p)
+print(p1)
 ```
 
 ## PGS regression analysis
@@ -211,7 +210,7 @@ res_combined %>%
 
 ### Forest plot
 ```{r}
-p <- res_combined %>% 
+p2 <- res_combined %>% 
   filter(term == "pgs.dep.scale") %>% 
   mutate(pheno = factor(pheno, levels = c("MDD", "MDD+psych_site"), labels = c("Code only", "Code + psych. visit"))) %>%
   ggplot(aes(x = pheno, y = OR, ymin = ci.lower, ymax = ci.upper)) +
@@ -228,13 +227,25 @@ p <- res_combined %>%
         panel.grid.major.y = element_blank()) 
 
 pdf("/data/davis_lab/allie/care_sites/output/mdd_application/mdd_pgs_regression_forest_plot_010525.pdf", width = 3, height = 1.5)
-print(p)
+print(p2)
 dev.off()
 ```
 
 ```{r}
-print(p)
-rm(p)
+print(p2)
+```
+
+### Combined plot
+```{r}
+p3 <- ggarrange(p1, p2, ncol = 2, nrow = 1, widths = c(1, 1))
+
+pdf("/data/davis_lab/allie/care_sites/output/mdd_application/mdd_pgs_regression_violins_forest_combined_010525.pdf", width = 6, height = 3)
+print(p3)
+dev.off()
+```
+
+```{r}
+print(p3)
 ```
 
 ## Supplemental tables
