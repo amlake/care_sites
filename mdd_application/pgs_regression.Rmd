@@ -210,6 +210,18 @@ dev.off()
 print(p1)
 ```
 
+### Stats
+```{r}
+## Codes only vs Controls
+t.test(dat_plot[ mdd_pheno == "Control", pgs.dep.scale], dat_plot[ mdd_pheno == "2+ Codes Only", pgs.dep.scale])
+
+## Codes+Psych vs Controls
+t.test(dat_plot[ mdd_pheno == "Control", pgs.dep.scale], dat_plot[ mdd_pheno == "2+ Codes + Psych. Visit", pgs.dep.scale])
+
+## Codes+Psych vs Codes only
+t.test(dat_plot[ mdd_pheno == "2+ Codes Only", pgs.dep.scale], dat_plot[ mdd_pheno == "2+ Codes + Psych. Visit", pgs.dep.scale])
+```
+
 ## PGS regression analysis
 ```{r}
 ## outcome = depression phecode (2+ codes)
