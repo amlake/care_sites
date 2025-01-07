@@ -343,3 +343,31 @@ All <- subset(FinalSummary_CareSites, care_site_id!="0" & MappedSpecialty!="Admi
 
 write.xlsx(All, "./output/CareSite_VisitDetailCount_FILTERED_AML_010425.xlsx", colWidths = "auto")
 
+## Write formatted table for supplement
+# Remove care sites with <100 patients per site
+# Remove unneeded columns
+# Remove ZZZ and other weird characters from care site names
+SuppDataTable <- All %>% 
+  filter(Person_N >= 100) %>%
+  mutate(IsMultiSpecialty = ifelse(IsMultiSpecialty==TRUE, 1, 0),
+         MultiSpecialty_Secondary = ifelse(MultiSpecialty_Secondary==0, "", MultiSpecialty_Secondary), 
+         MultiSpecialty_Tertiary = ifelse(MultiSpecialty_Tertiary ==0, "", MultiSpecialty_Tertiary ), 
+  ) %>%
+  mutate(care_site_name = gsub("ZZZ|zzz", "", care_site_name)) %>%
+  mutate(care_site_name = sub("^-+", "", care_site_name)) %>%
+  select(care_site_id, care_site_name, MappedSpecialty, MultiSpecialty_Secondary, MultiSpecialty_Tertiary, 
+         Person_N, Visits_N, VisitYear_Median, Age_Median, 
+         Adult_N, Adult_Percent, Female_N, Female_Percent, SexSpecific = GenderSpecific, AgeSpecific,
+         Outpt_N, Outpt_Percent, Inpt_N, Inpt_Percent, Emer_N, Emer_Percent, Unspecified_N, Unspecified_Percent, MajorityVisitType,
+         pherank_1, pherank_1_description, pherank_1_category,
+         pherank_2, pherank_2_description, pherank_2_category,
+         pherank_3, pherank_3_description, pherank_3_category,
+         pherank_4, pherank_4_description, pherank_4_category,
+         pherank_5, pherank_5_description, pherank_5_category,
+         cptrank_1, cptrank_1_description,
+         cptrank_2, cptrank_2_description,
+         cptrank_3, cptrank_3_description,
+         cptrank_4, cptrank_4_description,
+         cptrank_5, cptrank_5_description)
+
+write.xlsx(SuppDataTable, "./output/Figures/Descriptives/SuppData1_CareSite_VisitDetailCount_FILTERED.xlsx", colWidths = "auto")

@@ -158,8 +158,12 @@ sankey <- function(Map) {
   }
 
   p <- sankeyNetwork(Links = rbind(site_phe_links,phe_spec_links), Nodes = nodes, Source = "source",
-                    Target = "target", Value = "value", NodeID = "name",
-                    units = "TWh", fontSize = 12, nodeWidth = 20)
+                  Target = "target", Value = "value", NodeID = "name",
+                  units = "TWh", fontSize = 12, nodeWidth = 20)
+
+  # p <- sankeyNetwork(Links = rbind(site_phe_links,phe_spec_links), Nodes = nodes, Source = "source",
+  #                   Target = "target", Value = "value", NodeID = "name",
+  #                   units = "TWh", fontSize = 12, nodeWidth = 20, height = 800, width = 1000)
   return(p)
 }
 ```

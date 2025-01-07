@@ -15,7 +15,7 @@ pacman::p_load(data.table, dplyr, ggplot2, PheWAS, openxlsx, foreach, ggthemr, g
 options(scipen=999)
 ggthemr_reset()
 
-source("/data/davis_lab/allie/care_sites/scripts/mdd_application/manhattan_bar.R")
+source("/data/davis_lab/allie/care_sites/scripts/mdd_application/clinicscan_miami.R")
 ```
 
 ```{r}
@@ -110,7 +110,7 @@ visit_occurrence_id missingness appears to vary by medication record type
 
 ## Map antidepressants to care sites
 Map by *date* instead of visit_occurrence_id due to missingness in that column.
-```{r, eval = TRUE}
+```{r, eval = FALSE}
 ## load all visit data from 2023 SD pull that map to a defined care site (not Unclear or Administrative)
 ## (generated in compile_data.R)
 vdat <- readRDS("/data/davis_lab/allie/care_sites/data/mdd_application/20230607_sd_pull_visit_occurrence_defined_sites_010525.Rds")
@@ -184,6 +184,7 @@ specialty_summary_meds[,freq_med_per_specialty_norm := n_med_per_specialty / n_m
 care_site_supp <- copy(care_site_summary_meds)
 names(care_site_supp) <- c("care_site_id", "care_site_name", "specialty", "n_antidepressant_patients_per_site", "n_total_patients_per_site", "prop_antidepressant_patients_per_site","prop_antidepressant_patients_per_site_normalized")
 setorder(care_site_supp, -n_antidepressant_patients_per_site)
+care_site_supp <- care_site_supp[n_total_patients_per_site >= 100]
 
 specialty_supp <- copy(specialty_summary_meds)
 names(specialty_supp) <- c("specialty", "n_antidepressant_patients_per_specialty", "n_total_patients_per_specialty", "prop_antidepressant_patients_per_specialty","prop_antidepressant_patients_per_specialty_normalized")
@@ -191,10 +192,10 @@ setorder(specialty_supp, -n_antidepressant_patients_per_specialty)
 
 ## write to excel
 wb <- createWorkbook()
-addWorksheet(wb, "Care Site Summary")
-writeData(wb, "Care Site Summary", care_site_supp)
-addWorksheet(wb, "Specialty Summary")
-writeData(wb, "Specialty Summary", specialty_supp)
+addWorksheet(wb, "Antidepressants - Care Sites")
+writeData(wb, "Antidepressants - Care Sites", care_site_supp)
+addWorksheet(wb, "Antidepressants - Specialties")
+writeData(wb, "Antidepressants - Specialties", specialty_supp)
 saveWorkbook(wb, "/data/davis_lab/allie/care_sites/output/mdd_application/SupplementalTable_antidepressant_care_site_specialty_summary_010525.xlsx", overwrite = TRUE)
 ```
 
@@ -205,8 +206,10 @@ med_date <- unique(med_visits[,.(GRID, start_date)])
 # re-extract med records
 med_list <- merge(meds, med_date, by = c("GRID", "start_date")) 
 n_distinct(med_list$GRID) # 215510
+nrow(med_list) # 302477
 
 med_list <- unique(med_list[,.(GRID, generic_name = toupper(matched_drug_generic))])
+nrow(med_list) # 224279
 
 med_map <- unique(meds[,.(generic_name = toupper(matched_drug_generic), brand_name = matched_drug)])
 med_map <- med_map[brand_name != generic_name]

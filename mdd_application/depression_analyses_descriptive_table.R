@@ -29,10 +29,9 @@ person <- person %>%
         race_source_value == "W" ~ "White",
         race_source_value == "B" ~ "Black",
         race_source_value == "A" ~ "Asian",
-        race_source_value == "H" ~ "Hispanic",
-        race_source_value == "I" ~ "American Indian or Alaska Native",
+        race_source_value %in% c("H","I","N") ~ "Other",
         grepl(",", race_source_value) ~ "Multiple",
-        race_source_value %in% c("D","U","N") ~ "Other or Unspecified"
+        race_source_value %in% c("D","U") ~ "Unspecified"
     ))
 
 ## Depression code cohort
@@ -81,7 +80,7 @@ combined_cohort$cohort <- factor(combined_cohort$cohort, levels = c("Depression 
 combined_cohort$sex <- factor(combined_cohort$sex, levels = c("M", "F", "U"), labels = c("Male", "Female", "Unspecified")) 
 label(combined_cohort$sex) <- "Sex"
 
-combined_cohort$race <- factor(combined_cohort$race, levels = c("White", "Black", "Asian", "Hispanic", "American Indian or Alaska Native", "Multiple", "Other or Unspecified"))
+combined_cohort$race <- factor(combined_cohort$race, levels = c("White", "Black", "Asian", "Multiple", "Other", "Unspecified"))
 label(combined_cohort$race) <- "Race"
 
 label(combined_cohort$visit_age) <- "Age at Visit"

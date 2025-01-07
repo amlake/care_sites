@@ -314,7 +314,7 @@ spec_caresite_ct <- FilteredCareSites %>%
 write.csv(spec_caresite_ct, file="./output/Figures/Descriptives/Specialties_NCareSites_Label_ForAnnotation_AML_010425.csv", row.names = F)
 
 x_labels <- vroom("./output/Figures/Descriptives/Specialties_NCareSites_Label_ANNOTATED.csv", col_select = c(1, 3))
-fwrite(x_labels_new, "./output/Figures/Descriptives/Specialties_NCareSites_Label_ANNOTATED_AML_010425.csv")
+fwrite(x_labels, "./output/Figures/Descriptives/Specialties_NCareSites_Label_ANNOTATED_AML_010425.csv")
 
 ## keep labels, update N per site with new numbers
 x_labels_new <- x_labels %>% 
@@ -501,51 +501,3 @@ Cardiology <- FilteredCareSites %>%
   arrange(desc(Visits_N))
 
 write.xlsx(Cardiology, "./output/Figures/Descriptives/SupplementalTable5_CardiologyCareSites_AML_010425.xlsx", colWidths = "auto")
-
-## unused, commenting out for now
-if (FALSE) {
-  ###### Supplemental Table 5: all CPT codes by specialty #####
-  ## Pivot wider so CPT code is row and specialty N, freq_rank, and enrichment are columns
-  ###### Figure x: PheWAS Manhattan #####
-  ###### Figure x: CareSiteWAS Manhattan #####
-  ###### Figure x: Asthma - top pediatric CareSiteWAS #####
-  ###### Figure x: CHD - top adult CareSiteWAS #####
-  ###### Figure x: Age at event for high-risk CHD among catheter lab visits #####
-  ### Import FILTERED ICD codes and visits and create phecodes 
-  x_codes <- as.data.frame(fread("data/sd_data_qc/20230607_sd_pull_x_codes_dates_cleaned_overlapping_grids.txt"))
-  visit_occurrence <- as.data.frame(fread("data/sd_data_qc/20230607_sd_pull_visit_occurrence_dates_cleaned_overlapping_grids.txt"))
-
-  ## ICD-9-CM
-  x_codes_icd9cm <- subset(x_codes, vocabulary_id == "ICD9CM")
-  names(x_codes_icd9cm) <- c("person_id", "GRID", "entry_date", "entry_datetime", "concept_id", 
-                            "concept_name", "concept_code", "vocabulary_id", "visit_occurrence_id", "type_concept_id", 
-                            "item_position", "age_at_event", "x_poa")
-
-  # Map to phecodes and visits
-  Phecodes_ICD9_Visits <- x_codes_icd9cm %>% select(7,9) %>% 
-    left_join(PheWAS::phecode_map %>% filter(vocabulary_id=="ICD9CM"), by=c("concept_code"="code")) %>%
-    left_join(visit_occurrence %>% select(3,11), by="visit_occurrence_id") %>% 
-    filter(is.na(phecode)==FALSE & is.na(care_site_id)==FALSE & care_site_id!="0")
-
-  ## Map ICD-10-CM codes to phecodes and phecodes to visits
-  x_codes_icd10cm <- subset(x_codes, vocabulary_id == "ICD10CM")
-  names(x_codes_icd10cm) <- c("person_id", "GRID", "entry_date", "entry_datetime", "concept_id", 
-                              "concept_name", "concept_code", "vocabulary_id", "visit_occurrence_id", "type_concept_id", 
-                              "item_position", "age_at_event", "x_poa")
-
-  # Map to phecodes and visits
-  Phecodes_ICD10_Visits <- x_codes_icd10cm %>% select(7,9) %>% 
-    left_join(PheWAS::phecode_map %>% filter(vocabulary_id=="ICD10CM"), by=c("concept_code"="code")) %>%
-    left_join(visit_occurrence %>% select(3,11), by="visit_occurrence_id") %>% 
-    filter(is.na(phecode)==FALSE & is.na(care_site_id)==FALSE & care_site_id!="0")
-
-  # Calculate ICD-9 and ICD-10 code frequencies
-  phecodecount_bycaresite <- rbind(Phecodes_ICD9_Visits,Phecodes_ICD10_Visits) %>% 
-    group_by(care_site_id,phecode) %>% summarise(CodeCount=n()) %>% ungroup(phecode) %>%
-    left_join(PheWAS::pheinfo %>% select("phecode","description"), by="phecode") %>% filter(!is.na(description)) %>%
-    arrange(desc(CodeCount)) %>% mutate(freqrank = row_number()) %>% ungroup(care_site_id) %>%
-    arrange(care_site_id,freqrank) %>%
-    as.data.frame()
-
-  pheinfo_anno <- PheWAS::pheinfo %>% select("phecode","description","group")
-}

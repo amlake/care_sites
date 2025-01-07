@@ -15,7 +15,7 @@ pacman::p_load(data.table, dplyr, ggplot2, PheWAS, openxlsx, foreach, ggthemr, g
 options(scipen=999)
 ggthemr_reset()
 
-source("/data/davis_lab/allie/care_sites/scripts/mdd_application/manhattan_bar.R")
+source("/data/davis_lab/allie/care_sites/scripts/mdd_application/clinicscan_miami.R")
 ```
 
 ```{r}
@@ -73,7 +73,7 @@ nrow(icd_dep_earliest) # 205244 total entries
 
 ## Map depression codes to care sites
 Try mapping by visit_occurrence_id AND by date.
-```{r, eval = TRUE}
+```{r, eval = FALSE}
 ## load all visit data from 2023 SD pull that map to a defined care site (not missing, Unclear, or Administrative)
 ## (generated in compile_data.R)
 vdat <- readRDS("/data/davis_lab/allie/care_sites/data/mdd_application/20230607_sd_pull_visit_occurrence_defined_sites_010525.Rds")
@@ -154,6 +154,7 @@ specialty_summary_dep[,freq_dep_per_specialty_norm := n_dep_per_specialty / N_de
 care_site_supp <- copy(care_site_summary_dep)
 names(care_site_supp) <- c("care_site_id", "care_site_name", "specialty", "n_depression_patients_per_site", "n_total_patients_per_site", "prop_depression_patients_per_site","prop_depression_patients_per_site_normalized")
 setorder(care_site_supp, -n_depression_patients_per_site)
+care_site_supp <- care_site_supp[n_total_patients_per_site >= 100]
 
 specialty_supp <- copy(specialty_summary_dep)
 names(specialty_supp) <- c("specialty", "n_depression_patients_per_specialty", "n_total_patients_per_specialty", "prop_depression_patients_per_specialty","prop_depression_patients_per_specialty_normalized")
@@ -161,10 +162,10 @@ setorder(specialty_supp, -n_depression_patients_per_specialty)
 
 ## write to excel
 wb <- createWorkbook()
-addWorksheet(wb, "Care Site Summary")
-writeData(wb, "Care Site Summary", care_site_supp)
-addWorksheet(wb, "Specialty Summary")
-writeData(wb, "Specialty Summary", specialty_supp)
+addWorksheet(wb, "Depression - Care Sites")
+writeData(wb, "Depression - Care Sites", care_site_supp)
+addWorksheet(wb, "Depression - Specialties")
+writeData(wb, "Depression - Specialties", specialty_supp)
 saveWorkbook(wb, "/data/davis_lab/allie/care_sites/output/mdd_application/SupplementalTable_depression_care_site_specialty_summary_010525.xlsx", overwrite = TRUE)
 ```
 

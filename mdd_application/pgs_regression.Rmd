@@ -87,7 +87,7 @@ icd_dep <- readRDS("/data/davis_lab/allie/care_sites/data/mdd_application/202306
   group_by(GRID) %>% 
   summarise(n = n()) %>%
   mutate(mdd = case_when(n >=2 ~ 1, n == 0 ~ 0, n==1 ~ -9)) %>% 
-  select(GRID, mdd)
+  select(GRID, mdd, n_dep_code = n)
 
 stopifnot(nrow(icd_dep %>% filter(mdd == 0)) == 0)
 
@@ -95,6 +95,7 @@ stopifnot(nrow(icd_dep %>% filter(mdd == 0)) == 0)
 dat <- dat %>% 
   left_join(icd_dep, by = "GRID") %>%
   mutate(mdd = ifelse(is.na(mdd), 0, mdd)) %>%
+  mutate(n_dep_code = ifelse(is.na(n_dep_code), 0, n_dep_code))  %>% 
   as.data.frame() %>% data.table()
 ```
 
@@ -113,11 +114,16 @@ visit <- readRDS("/data/davis_lab/allie/care_sites/data/mdd_application/20230607
 ```
 
 ## Depression definitions
-* Definition 1: standard depression phecode (296.2)
+* Definition 1: standard depression phecode (296.2) on 2+ distinct dates
 * Definition 2: 
-  * case = has depression phecode (296.2) + ≥1 psych site visit (i.e., has depression and has ever seen a psychiatrist)
-  * control = no depression phecode (296.2)
-  * excluded = has depression phecode (296.2) but no psych site visit or is N/A for depression phecode
+  * case = has depression phecode (2+ distinct dates) + ≥1 psych site visit (i.e., has depression and has ever seen a psychiatrist)
+  * control = no depression phecode
+  * excluded = has depression phecode but no psych site visit or only has 1 code
+* Definitions 3-5 (not included in violin plots / t-tests as this would get too confusing with the overlapping between cohorts):
+  * For N = 3,4,10:
+    * case = has depression phecode - N+ distinct dates
+    * control = no depression phecode
+    * excluded = has only 1-(N-2) distinct depression code-dates
 ```{r}
 psych_sites <- unique(map[SpecialtyLong == "Psychiatry", care_site_id])
 psych_grids <- unique(visit[care_site_id %in% psych_sites, GRID])
@@ -133,39 +139,67 @@ head(dat)
 ```{r}
 dat %>% 
   group_by(mdd) %>%
-  summarise(n = n())
+  summarise(n = n(), min_n_dep_code = min(n_dep_code), max_n_dep_code = max(n_dep_code))
 ```
 
 ```{r}
 dat %>% 
   group_by(mdd_psych_site) %>%
-  summarise(n = n())
+  summarise(n = n(), min_n_dep_code = min(n_dep_code), max_n_dep_code = max(n_dep_code))
 ```
 
 ```{r}
 dat %>% 
   group_by(mdd_pheno) %>%
-  summarise(n = n())
+  summarise(n = n(), min_n_dep_code = min(n_dep_code), max_n_dep_code = max(n_dep_code))
+```
+
+Create definitions 3-5, for regressions only (not included in violin plots or t-tests).
+```{r}
+dat[,mdd_3code := ifelse(n_dep_code >= 3, 1, ifelse(n_dep_code == 0, 0, -9))]
+
+dat %>% 
+  group_by(mdd_3code) %>%
+  summarise(n = n(), min_n_dep_code = min(n_dep_code), max_n_dep_code = max(n_dep_code))
+```
+
+```{r}
+dat[,mdd_4code := ifelse(n_dep_code >= 4, 1, ifelse(n_dep_code == 0, 0, -9))]
+
+dat %>% 
+  group_by(mdd_4code) %>%
+  summarise(n = n(), min_n_dep_code = min(n_dep_code), max_n_dep_code = max(n_dep_code))
+```
+
+```{r}
+dat[,mdd_10code := ifelse(n_dep_code >= 10, 1, ifelse(n_dep_code == 0, 0, -9))]
+
+dat %>% 
+  group_by(mdd_10code) %>%
+  summarise(n = n(), min_n_dep_code = min(n_dep_code), max_n_dep_code = max(n_dep_code))
 ```
 
 ## Raw PGS comparison
 ```{r}
-my_comparisons <- list( c("Control", "Code only"), c("Control", "Code + psych. visit"), c("Code only", "Code + psych. visit") )
+my_comparisons <- list( c("Control", "2+ Codes Only"), c("Control", "2+ Codes + Psych. Visit"), c("2+ Codes Only", "2+ Codes + Psych. Visit") )
 
 dat_plot <-  dat %>% 
   filter(mdd_pheno != "excluded") %>%
-  mutate(mdd_pheno = factor(mdd_pheno, levels = c("control", "mdd_no_site", "mdd+site"), labels = c("Control", "Code only", "Code + psych. visit"))) %>% 
+  mutate(mdd_pheno = factor(mdd_pheno, levels = c("control", "mdd_no_site", "mdd+site"), labels = c("Control", "2+ Codes Only", "2+ Codes + Psych. Visit"))) %>% 
   mutate(mdd_pheno = as.character(mdd_pheno)) %>%
   data.table()
 
 p1 <- dat_plot %>%
   ggplot(aes(x = mdd_pheno, fill = mdd_pheno, pgs.dep.scale)) +
-  geom_violin() +
+  geom_violin(alpha = 0.7) +
   geom_boxplot(width = 0.3) +
-  labs(x = "Phenotype", y = "Scaled depression PGS", fill = "") +
+  scale_y_continuous(expand = expansion(mult = 0.05)) +
+  labs(x = "Phenotype", y = "Scaled Depression Polygenic Score", fill = "") +
   stat_compare_means(comparisons = my_comparisons, method = "t.test", label = "p.signif") +
   theme_bw() +
-  theme(legend.position = "none")
+  theme(legend.position = "none", 
+        axis.text.x = element_text(size = 7, angle = 20, hjust = 1), 
+        axis.title.x = element_text(margin = margin(t = 1)))
 
 pdf("/data/davis_lab/allie/care_sites/output/mdd_application/mdd_raw_pgs_comparison_010525.pdf", width = 6, height = 5)
 print(p1)
@@ -178,55 +212,91 @@ print(p1)
 
 ## PGS regression analysis
 ```{r}
+## outcome = depression phecode (2+ codes)
 mdl_mdd <- glm(mdd ~ pgs.dep.scale + sex + median_age + PC1+PC2+PC3+PC4+PC5+PC6+PC7+PC8+PC9+PC10, 
            data = dat[mdd!=-9], family = "binomial")
 
 res_mdd <- process_logit(mdl_mdd) %>% 
-  mutate(pheno = "MDD", 
+  mutate(pheno = "2+ Codes", 
          n_total = nrow(dat[mdd!=-9]), 
          n_cases = nrow(dat[mdd==1]), 
          n_controls = nrow(dat[mdd==0]))
 
+## outcome = depression phecode (3+ codes)
+mdl_mdd_3code <- glm(mdd_3code ~ pgs.dep.scale + sex + median_age + PC1+PC2+PC3+PC4+PC5+PC6+PC7+PC8+PC9+PC10, 
+           data = dat[mdd_3code!=-9], family = "binomial")
+
+res_mdd_3code <- process_logit(mdl_mdd_3code) %>% 
+  mutate(pheno = "3+ Codes", 
+         n_total = nrow(dat[mdd_3code!=-9]), 
+         n_cases = nrow(dat[mdd_3code==1]), 
+         n_controls = nrow(dat[mdd_3code==0]))
+
+## outcome = depression phecode (4+ codes)
+mdl_mdd_4code <- glm(mdd_4code ~ pgs.dep.scale + sex + median_age + PC1+PC2+PC3+PC4+PC5+PC6+PC7+PC8+PC9+PC10, 
+           data = dat[mdd_4code!=-9], family = "binomial")
+
+res_mdd_4code <- process_logit(mdl_mdd_4code) %>% 
+  mutate(pheno = "4+ Codes", 
+         n_total = nrow(dat[mdd_4code!=-9]), 
+         n_cases = nrow(dat[mdd_4code==1]), 
+         n_controls = nrow(dat[mdd_4code==0]))
+
+## outcome = depression phecode (10+ codes)
+mdl_mdd_10code <- glm(mdd_10code ~ pgs.dep.scale + sex + median_age + PC1+PC2+PC3+PC4+PC5+PC6+PC7+PC8+PC9+PC10, 
+           data = dat[mdd_10code!=-9], family = "binomial")
+
+res_mdd_10code <- process_logit(mdl_mdd_10code) %>% 
+  mutate(pheno = "10+ Codes", 
+         n_total = nrow(dat[mdd_10code!=-9]), 
+         n_cases = nrow(dat[mdd_10code==1]), 
+         n_controls = nrow(dat[mdd_10code==0]))
+
+## outcome = depression phecode (2+ codes) + psych site visit
 mdl_mdd_psych_site <- glm(mdd_psych_site ~ pgs.dep.scale + sex + median_age + PC1+PC2+PC3+PC4+PC5+PC6+PC7+PC8+PC9+PC10, 
            data = dat[mdd_psych_site!=-9], family = "binomial")
 
 res_mdd_psych_site <- process_logit(mdl_mdd_psych_site) %>% 
-  mutate(pheno = "MDD+psych_site", 
+  mutate(pheno = "2+ Codes +\nPsych. Visit", 
          n_total = nrow(dat[mdd_psych_site!=-9]), 
          n_cases = nrow(dat[mdd_psych_site==1]),
          n_controls = nrow(dat[mdd_psych_site==0]))
 
-res_combined <- data.table(rbind(res_mdd, res_mdd_psych_site))
+## combine results
+res_combined <- data.table(rbind(res_mdd, res_mdd_psych_site, res_mdd_3code, res_mdd_4code, res_mdd_10code))
 
 res_combined[, OR_format := apply(.SD, 1, function(x) or_format_func(x[1], x[2], x[3])), .SDcols = c("OR", "ci.lower", "ci.upper")]
 res_combined$p.value.fmt <- sapply(res_combined$p.value, rounding_func)
+res_combined$pheno <- factor(res_combined$pheno, levels = rev(c("2+ Codes", "3+ Codes", "4+ Codes", "10+ Codes", "2+ Codes +\nPsych. Visit")))
+res_combined[, pheno_color := as.character(pheno == "2+ Codes +\nPsych. Visit")]
 
 res_combined %>% 
   filter(term == "pgs.dep.scale") %>% 
-  select(pheno, OR_format, p.value.fmt) %>%
-  kable() %>%
-  kable_styling()
+  select(pheno, OR_format, p.value.fmt, n_cases, n_controls) %>%
+  arrange(pheno)
 ```
 
 ### Forest plot
 ```{r}
 p2 <- res_combined %>% 
   filter(term == "pgs.dep.scale") %>% 
-  mutate(pheno = factor(pheno, levels = c("MDD", "MDD+psych_site"), labels = c("Code only", "Code + psych. visit"))) %>%
-  ggplot(aes(x = pheno, y = OR, ymin = ci.lower, ymax = ci.upper)) +
+  ggplot(aes(x = pheno, y = OR, ymin = ci.lower, ymax = ci.upper, color = pheno_color)) +
   geom_point(size = 3) +
   geom_errorbar(width = 0.2) +
   geom_hline(yintercept = 1, linetype = "dashed") +
-  scale_x_discrete(expand = c(0, 0.4))  +
+  scale_x_discrete(expand = expansion(mult = 0.05))  +
+  scale_color_manual(values = c("TRUE" = "#E64B35")) + 
   labs(x = "Phenotype", y = "Odds ratio (95% CI)") +
   coord_flip() +
   theme_bw() +
+  guides(color = "none") +
   theme(axis.text.y = element_text(size = 8), 
-        axis.title.y = element_text(margin = margin(r = 10)),
-        axis.title.x = element_text(margin = margin(t = 10)),
-        panel.grid.major.y = element_blank()) 
+        axis.title.y = element_text(margin = margin(r = 0)),
+        axis.title.x = element_text(margin = margin(t = 5)),
+        panel.grid.major.y = element_blank(),
+        plot.margin =  margin(t = 0.2, r = 0.2, b = 0.2, l = 0.1, unit = "cm")) 
 
-pdf("/data/davis_lab/allie/care_sites/output/mdd_application/mdd_pgs_regression_forest_plot_010525.pdf", width = 3, height = 1.5)
+pdf("/data/davis_lab/allie/care_sites/output/mdd_application/mdd_pgs_regression_forest_plot_010525.pdf", width = 6, height = 4)
 print(p2)
 dev.off()
 ```
@@ -237,9 +307,9 @@ print(p2)
 
 ### Combined plot
 ```{r}
-p3 <- ggarrange(p1, p2, ncol = 2, nrow = 1, widths = c(1, 1))
+p3 <- ggarrange(p1, p2, ncol = 2, nrow = 1, widths = c(1, 0.85), labels = c("A", "B"))
 
-pdf("/data/davis_lab/allie/care_sites/output/mdd_application/mdd_pgs_regression_violins_forest_combined_010525.pdf", width = 6, height = 3)
+pdf("/data/davis_lab/allie/care_sites/output/mdd_application/mdd_pgs_regression_violins_forest_combined_010525.pdf", width = 7, height = 5)
 print(p3)
 dev.off()
 ```
@@ -252,15 +322,19 @@ print(p3)
 ```{r}
 supp_table <- copy(res_combined) %>% 
   select(term, beta = estimate, std.error, statistic, OR, ci.lower, ci.upper, p.value, n_total, n_cases, pheno) %>%
-  data.table()
+  as.data.frame() %>% data.table()
+
+supp_table[pheno == "2+ Codes +\nPsych. Visit", pheno := "2+ Codes + Psych. Visit"]
+supp_table[, pheno := as.character(pheno)]
+setnames(supp_table, "pheno", "Phenotype")
 
 ## write to excel
 wb <- createWorkbook()
-addWorksheet(wb, "Code only")
-writeData(wb, "Code only", supp_table[pheno == "MDD"] %>% select(-pheno))
-addWorksheet(wb, "Code + psych. visit")
-writeData(wb, "Code + psych. visit", supp_table[pheno == "MDD+psych_site"] %>% select(-pheno))
-saveWorkbook(wb, "/data/davis_lab/allie/care_sites/output/mdd_application/SupplementalTable_depression_pgs_regression_results_010525.xlsx", overwrite = TRUE)
+for (pheno in unique(supp_table$Phenotype)) {
+  addWorksheet(wb, pheno)
+  writeData(wb, pheno, supp_table[Phenotype == pheno] %>% select(-Phenotype))
+}
+saveWorkbook(wb, paste0("/data/davis_lab/allie/care_sites/output/mdd_application/SupplementalTable_depression_pgs_regression_results_", format(Sys.Date(), "%m%d%y"), ".xlsx"), overwrite = TRUE)
 ```
 
 ### Save analysis cohort for supplemental table created in depression_analyses_descriptive_table.R
