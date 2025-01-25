@@ -60,6 +60,8 @@ icd_dep <- readRDS("/data/davis_lab/allie/care_sites/data/mdd_application/202306
 icd_dep$entry_datetime <- as_datetime(icd_dep$entry_datetime)
 
 table(icd_dep$vocabulary_id)
+
+range(icd_dep$entry_date) # "1998-01-01" "2023-03-31"
 ```
 
 ## Select each patient's *earliest* depression code
