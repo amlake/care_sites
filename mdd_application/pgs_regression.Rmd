@@ -213,13 +213,13 @@ print(p1)
 ### Stats
 ```{r}
 ## Codes only vs Controls
-t.test(dat_plot[ mdd_pheno == "Control", pgs.dep.scale], dat_plot[ mdd_pheno == "2+ Codes Only", pgs.dep.scale])
+t.test(dat_plot[ mdd_pheno == "2+ Codes Only", pgs.dep.scale], dat_plot[ mdd_pheno == "Control", pgs.dep.scale])
 
 ## Codes+Psych vs Controls
-t.test(dat_plot[ mdd_pheno == "Control", pgs.dep.scale], dat_plot[ mdd_pheno == "2+ Codes + Psych. Visit", pgs.dep.scale])
+t.test(dat_plot[ mdd_pheno == "2+ Codes + Psych. Visit", pgs.dep.scale], dat_plot[ mdd_pheno == "Control", pgs.dep.scale])
 
 ## Codes+Psych vs Codes only
-t.test(dat_plot[ mdd_pheno == "2+ Codes Only", pgs.dep.scale], dat_plot[ mdd_pheno == "2+ Codes + Psych. Visit", pgs.dep.scale])
+t.test(dat_plot[ mdd_pheno == "2+ Codes + Psych. Visit", pgs.dep.scale], dat_plot[ mdd_pheno == "2+ Codes Only", pgs.dep.scale])
 ```
 
 ## PGS regression analysis
