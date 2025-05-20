@@ -36,4 +36,5 @@ Working directory: /data/davis_lab/allie/care_sites
 ### :bangbang: [MakeFigures.r](https://bitbucket.org/davislabteam/care_sites/src/master/MakeFigures.r)
 ### :bangbang: [stankey.Rmd](https://bitbucket.org/davislabteam/care_sites/src/master/stankey.Rmd): Make Sankey plots
 * Depends on: [CreateDescriptives_CareSites.r](https://bitbucket.org/davislabteam/care_sites/src/master/CreateDescriptives_CareSites.r)
+* Exclude: unknown, administrative, phlebotomy, radiology, research
     
