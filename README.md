@@ -7,7 +7,7 @@ Working directory: /data/davis_lab/allie/care_sites
 * ./data/CareSite_map_011024_release-1/CareSite_Map_011024.xlsx
 * ./data/CareSite_map_011024_release-1/CareSite_Map_Multispecialty_Long_Format_011024.csv
 
-### :white_check_mark: [sd_data_qc.R](https://bitbucket.org/davislabteam/care_sites/src/master/sd_data_qc.R): Load and clean tables from 20230607 SD pull on ACCRE
+### :white_check_mark: [sd_data_qc.R](https://bitbucket.org/davislabteam/care_sites/src/master/sd_data_qc.R): Load and clean tables from 2023-06-07 SD pull on ACCRE
 * Clean PERSON table
     * Remove GRIDs with missing birth dates
     * DOB filter: 1898 to 2023-03-31
