@@ -60,8 +60,6 @@ map <- merge(map, Specialties_3group, by.x = "SpecialtyLong", by.y = "MappedSpec
 
 setorder(map, -Visits_N)
 map[,visit_rank := 1:.N, by = Group]
-
-map <- map[visit_rank <= 50]
 ```
 
 ### Sort by phecode
@@ -159,7 +157,7 @@ sankey <- function(Map) {
 
   p <- sankeyNetwork(Links = rbind(site_phe_links,phe_spec_links), Nodes = nodes, Source = "source",
                   Target = "target", Value = "value", NodeID = "name",
-                  units = "TWh", fontSize = 12, nodeWidth = 20)
+                  units = "TWh", fontSize = 16, nodeWidth = 40, height = 500, width = 700)
 
   # p <- sankeyNetwork(Links = rbind(site_phe_links,phe_spec_links), Nodes = nodes, Source = "source",
   #                   Target = "target", Value = "value", NodeID = "name",
@@ -169,7 +167,15 @@ sankey <- function(Map) {
 ```
 
 ```{r, fig.width=10, fig.height=10}
-sankey(map[Group == "Medical"])
-sankey(map[Group == "Surgical"])
-sankey(map[Group == "Other"])
+sankey(map[visit_rank <= 50 & Group == "Medical"])
+sankey(map[visit_rank <= 50 & Group == "Surgical"])
+sankey(map[visit_rank <= 50 & Group == "Other"])
+```
+
+## AML plots for defense slides
+```{r}
+map[care_site_name == "PACEMAKER CLINIE", care_site_name := "PACEMAKER CLINIC"]
+sankey(map[Visits_N >= 50000 & SpecialtyLong == "Cardiology"])
+sankey(map[Visits_N >= 10000 & SpecialtyLong == "Psychiatry"])
+sankey(map[Visits_N >= 10000 & SpecialtyLong %in% c("Psychiatry", "Neurology")])
 ```
