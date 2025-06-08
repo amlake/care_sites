@@ -19,13 +19,7 @@ source("/data/davis_lab/allie/care_sites/scripts/mdd_application/clinicscan_miam
 ```
 
 ```{r}
-map <- fread("/data/davis_lab/allie/care_sites/output/CareSiteMap_Multispecialty_Long_UPDATED_AML_010425.csv")
-care_site_names <- read.xlsx("/data/davis_lab/allie/care_sites/output/CareSite_VisitDetailCount_UPDATED_AML_010425.xlsx") %>%
-  select(care_site_id, care_site_name) %>% 
-  data.table() %>% 
-  unique()
-
-map <- merge(map, care_site_names, by = "care_site_id")
+map <- fread("/data/davis_lab/allie/care_sites/output/CareSiteMap_Multispecialty_Long_UPDATED_JPS_052325.csv")
 ```
 
 ## Compile ST disclosure data
@@ -59,7 +53,7 @@ Map by date, not visit_occurrence_id.
 ```{r, eval = FALSE}
 ## load all visit data from 2023 SD pull that map to a defined care site (not missing, Unclear, or Administrative)
 ## (generated in compile_data.R)
-vdat <- readRDS("/data/davis_lab/allie/care_sites/data/mdd_application/20230607_sd_pull_visit_occurrence_defined_sites_010525.Rds")
+vdat <- readRDS("/data/davis_lab/allie/care_sites/data/mdd_application/20230607_sd_pull_visit_occurrence_defined_sites_060825.Rds")
 n_distinct(vdat$GRID) # 2959903 total individuals with a visit mapped to a "defined" care site 
 
 ## get the total individual count per care site and per specialty
@@ -69,14 +63,14 @@ vdat[,spec_n_grid := n_distinct(.SD$GRID), by = SpecialtyLong]
 ## map earliest note to care sites via date
 st_notes_visits_by_date <- merge(st_notes_earliest, vdat, by = "GRID", allow.cartesian = TRUE)
 st_notes_visits_by_date <- st_notes_visits_by_date[NOTE_DATE >= visit_start_date & NOTE_DATE <= visit_end_date]
-saveRDS(st_notes_visits_by_date, "/data/davis_lab/allie/care_sites/data/mdd_application/20230607_sd_pull_visit_occurrence_earliest_st_note_joined_by_date.Rds")
+saveRDS(st_notes_visits_by_date, "/data/davis_lab/allie/care_sites/data/mdd_application/20230607_sd_pull_visit_occurrence_earliest_st_note_joined_by_date_060825.Rds")
 
 n_distinct(st_notes_visits_by_date$GRID) # 11339 individuals with earliest note mapping to a visit with a DEFINED CARE SITE by date (60.7% total with st)
 ```
 
 ```{r}
 ## load file generated above
-st_notes_visits <- readRDS("/data/davis_lab/allie/care_sites/data/mdd_application/20230607_sd_pull_visit_occurrence_earliest_st_note_joined_by_date.Rds")
+st_notes_visits <- readRDS("/data/davis_lab/allie/care_sites/data/mdd_application/20230607_sd_pull_visit_occurrence_earliest_st_note_joined_by_date_060825.Rds")
 head(st_notes_visits)
 nrow(st_notes_visits) # 14844
 n_distinct(st_notes_visits$GRID) # 11339
@@ -136,7 +130,7 @@ addWorksheet(wb, "Care Site Summary")
 writeData(wb, "Care Site Summary", care_site_supp)
 addWorksheet(wb, "Specialty Summary")
 writeData(wb, "Specialty Summary", specialty_supp)
-saveWorkbook(wb, "/data/davis_lab/allie/care_sites/output/mdd_application/SupplementalTable_st_care_site_specialty_summary.xlsx", overwrite = TRUE)
+saveWorkbook(wb, "/data/davis_lab/allie/care_sites/output/mdd_application/SupplementalTable_st_care_site_specialty_summary_060825.xlsx", overwrite = TRUE)
 ```
 
 ## Plots
@@ -168,7 +162,7 @@ p2 <- caresite_manhattan_bar(caresite_plot_df_norm, points = T, flip = T) +
 
 p <- ggarrange(p1, p2, ncol=1,nrow=2)
 
-pdf("/data/davis_lab/allie/care_sites/output/mdd_application/earliest_st_note_site_counts_mapped_by_date_miami_points.pdf", width = 11, height = 8.5)
+pdf("/data/davis_lab/allie/care_sites/output/mdd_application/earliest_st_note_site_counts_mapped_by_date_miami_points_060825.pdf", width = 11, height = 8.5)
 print(p)
 dev.off()
 ```

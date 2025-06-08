@@ -35,7 +35,7 @@ person <- person %>%
     ))
 
 ## Depression code cohort
-dep_cohort <- readRDS("/data/davis_lab/allie/care_sites/data/mdd_application/20230607_sd_pull_visit_occurrence_earliest_dep_icd_joined_by_date_010525.Rds") %>%
+dep_cohort <- readRDS("/data/davis_lab/allie/care_sites/data/mdd_application/20230607_sd_pull_visit_occurrence_earliest_dep_icd_joined_by_date_060825.Rds") %>%
     group_by(GRID) %>%
     filter(visit_start_date == min(visit_start_date)) %>%
     ungroup() %>%
@@ -49,7 +49,7 @@ dep_cohort <- readRDS("/data/davis_lab/allie/care_sites/data/mdd_application/202
 stopifnot(n_distinct(dep_cohort$GRID) == nrow(dep_cohort))
 
 ## Antidepressant cohort
-med_cohort <- readRDS("/data/davis_lab/allie/care_sites/data/mdd_application/20230607_sd_pull_visit_occurrence_earliest_med_joined_by_date_010525.Rds") %>%
+med_cohort <- readRDS("/data/davis_lab/allie/care_sites/data/mdd_application/20230607_sd_pull_visit_occurrence_earliest_med_joined_by_date_060825.Rds") %>%
     group_by(GRID) %>%
     filter(visit_start_date == min(visit_start_date)) %>%
     ungroup() %>%
@@ -62,8 +62,8 @@ med_cohort <- readRDS("/data/davis_lab/allie/care_sites/data/mdd_application/202
 
 stopifnot(n_distinct(med_cohort$GRID) == nrow(med_cohort))
 
-## MDD PGS cohort
-pgs_cohort <- fread("/data/davis_lab/allie/care_sites/data/mdd_application/mdd_pgs_regression_cohort_010525.csv") %>%
+## MDD PRS cohort
+pgs_cohort <- fread("/data/davis_lab/allie/care_sites/data/mdd_application/mdd_pgs_regression_cohort_060825.csv") %>%
     select(GRID,median_age) %>% 
     left_join(person, by = "GRID") %>% 
     select(GRID, sex = gender_source_value, visit_age = median_age, race, ethnicity = ethnicity_source_value) %>%
@@ -73,7 +73,7 @@ pgs_cohort <- fread("/data/davis_lab/allie/care_sites/data/mdd_application/mdd_p
 
 ## ST cohort
 ## load file generated in trauma_care_sites.Rmd
-st_notes_visits <- readRDS("/data/davis_lab/allie/care_sites/data/mdd_application/20230607_sd_pull_visit_occurrence_earliest_st_note_joined_by_date.Rds")
+st_notes_visits <- readRDS("/data/davis_lab/allie/care_sites/data/mdd_application/20230607_sd_pull_visit_occurrence_earliest_st_note_joined_by_date_060825.Rds")
 nrow(st_notes_visits) # 14844
 n_distinct(st_notes_visits$GRID) # 11339
 

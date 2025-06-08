@@ -7,12 +7,12 @@ setwd("/data/davis_lab/allie/care_sites")
 dat <- fread("data/sd_data_qc/20230607_sd_pull_person_dates_cleaned_overlapping_grids.txt")
 range(dat$year_of_birth) # 1908-2023
 
-## load care sites specialty map, filtered to mapped specialties
-map <- fread("output/CareSiteMap_Multispecialty_Long_UPDATED_AML_010425.csv")
+## load care sites specialty map
+map <- fread("/data/davis_lab/allie/care_sites/output/CareSiteMap_Multispecialty_Long_UPDATED_JPS_052325.csv")
 
-care_site_names <- read.xlsx("/data/davis_lab/allie/care_sites/output/CareSite_VisitDetailCount_UPDATED_AML_010425.xlsx") %>%
+care_site_names <- read.xlsx("/data/davis_lab/allie/care_sites/output/CareSite_VisitDetailCount_UPDATED_JPS_052325.xlsx") %>%
   select(care_site_id, care_site_name) %>%
-  data.table() %>%
+  as.data.frame() %>% data.table() %>%
   unique()
 
 map <- merge(map, care_site_names, by = "care_site_id")
@@ -40,42 +40,45 @@ pgs_eur <- pgs_eur %>% select(GRID,genetic_ancestry,pgs.scz.scale, pgs.bd.scale,
 dat <- merge(dat, pgs_eur, by = "GRID")
 
 ## save
-saveRDS(dat, "data/mega_eur_covariates_psych_pgs_010525.Rds")
+saveRDS(dat, "data/mega_eur_covariates_psych_pgs_060825.Rds")
 
 #### Compile visit data for full SD cohort ####
 ## see ../sd_data_qc.R for visit cleaning steps
-visit_full_sd <- fread("data/sd_data_qc/20230607_sd_pull_visit_occurrence_dates_cleaned_overlapping_grids.txt")
+if (FALSE) { # does not need to be rerun 06/08/25
+  visit_full_sd <- fread("data/sd_data_qc/20230607_sd_pull_visit_occurrence_dates_cleaned_overlapping_grids.txt")
 
-nrow(visit_full_sd) # 69307208
-n_distinct(visit_full_sd$visit_occurrence_id) #  69307208
-n_distinct(visit_full_sd$GRID) # 3213825
+  nrow(visit_full_sd) # 69307208
+  n_distinct(visit_full_sd$visit_occurrence_id) #  69307208
+  n_distinct(visit_full_sd$GRID) # 3213825
 
-nrow(visit_full_sd[care_site_id != 0]) # 53934856
+  nrow(visit_full_sd[care_site_id != 0]) # 53934856
 
-class(visit_full_sd$visit_occurrence_id) # integer
-range(visit_full_sd$visit_occurrence_id) # 1-112444321 (don't need to worry about int64 issues)
+  class(visit_full_sd$visit_occurrence_id) # integer
+  range(visit_full_sd$visit_occurrence_id) # 1-112444321 (don't need to worry about int64 issues)
 
-range(visit_full_sd$visit_start_date) # "1998-01-01" "2023-03-31"
+  range(visit_full_sd$visit_start_date) # "1998-01-01" "2023-03-31"
 
-visit <- copy(visit_full_sd)
+  visit <- copy(visit_full_sd)
 
-visit <- visit %>%
-  select(GRID, visit_occurrence_id, visit_start_date, visit_end_date, visit_concept_id, care_site_id) %>% 
-  as.data.table()
+  visit <- visit %>%
+    select(GRID, visit_occurrence_id, visit_start_date, visit_end_date, visit_concept_id, care_site_id) %>% 
+    as.data.table()
 
-visit[visit_concept_id == 0, visit_type := "unknown"]
-visit[visit_concept_id == 9201, visit_type := "IP"]
-visit[visit_concept_id == 9202, visit_type := "OP"]
-visit[visit_concept_id == 9203, visit_type := "ER"]
+  visit[visit_concept_id == 0, visit_type := "unknown"]
+  visit[visit_concept_id == 9201, visit_type := "IP"]
+  visit[visit_concept_id == 9202, visit_type := "OP"]
+  visit[visit_concept_id == 9203, visit_type := "ER"]
 
-## if visit end date is missing, set end date = start date
-visit[is.na(visit_end_date), visit_end_date := visit_start_date]
-visit <- unique(visit)
+  ## if visit end date is missing, set end date = start date
+  visit[is.na(visit_end_date), visit_end_date := visit_start_date]
+  visit <- unique(visit)
 
-nrow(visit) # 69307208
-n_distinct(visit$visit_occurrence_id) # 69307208
+  nrow(visit) # 69307208
+  n_distinct(visit$visit_occurrence_id) # 69307208
+  saveRDS(visit, "/data/davis_lab/allie/care_sites/data/mdd_application/20230607_sd_pull_visit_occurrence_unique_010525.Rds")
+}
 
-saveRDS(visit, "/data/davis_lab/allie/care_sites/data/mdd_application/20230607_sd_pull_visit_occurrence_unique_010525.Rds")
+visit <- readRDS("/data/davis_lab/allie/care_sites/data/mdd_application/20230607_sd_pull_visit_occurrence_unique_010525.Rds")
 
 nrow(visit[care_site_id != 0]) # 53934856 visits have a non-null care site id
 nrow(visit[care_site_id != 0]) / nrow(visit) # 77.8% of visits have a non-null care site id
@@ -90,12 +93,12 @@ n_distinct(visit_sites$visit_occurrence_id) / nrow(visit[care_site_id != 0]) # 8
 
 nrow(visit_sites) # 51108855 total rows
 
-saveRDS(visit_sites, "/data/davis_lab/allie/care_sites/data/mdd_application/20230607_sd_pull_visit_occurrence_defined_sites_010525.Rds")
+saveRDS(visit_sites, "/data/davis_lab/allie/care_sites/data/mdd_application/20230607_sd_pull_visit_occurrence_defined_sites_060825.Rds")
 
 ## restrict to MEGA cohort
 visit_sites_mega <- visit_sites[GRID %in% dat$GRID]
 
 ## save
-saveRDS(visit_sites_mega, "/data/davis_lab/allie/care_sites/data/mdd_application/20230607_sd_pull_mega_grids_visit_occurrence_defined_sites_010525.Rds")
+saveRDS(visit_sites_mega, "/data/davis_lab/allie/care_sites/data/mdd_application/20230607_sd_pull_mega_grids_visit_occurrence_defined_sites_060825.Rds")
 
 

@@ -19,13 +19,7 @@ source("/data/davis_lab/allie/care_sites/scripts/mdd_application/clinicscan_miam
 ```
 
 ```{r}
-map <- fread("/data/davis_lab/allie/care_sites/output/CareSiteMap_Multispecialty_Long_UPDATED_AML_010425.csv")
-care_site_names <- read.xlsx("/data/davis_lab/allie/care_sites/output/CareSite_VisitDetailCount_UPDATED_AML_010425.xlsx") %>%
-  select(care_site_id, care_site_name) %>% 
-  data.table() %>% 
-  unique()
-
-map <- merge(map, care_site_names, by = "care_site_id")
+map <- fread("/data/davis_lab/allie/care_sites/output/CareSiteMap_Multispecialty_Long_UPDATED_JPS_052325.csv")
 ```
 
 ```{r}
@@ -37,6 +31,7 @@ dep_code_list <- unique(rbind(PheWAS::phecode_map_icd10, PheWAS::phecode_map)) %
 
 ## Extract depression ICD codes
 ```{r load_icd, eval = FALSE}
+## does not need to be re-run 06/08/25
 ## load all codes from the 2023 SD pull
 x_codes <- fread("../../data/sd_data_qc/20230607_sd_pull_x_codes_dates_cleaned_overlapping_grids.txt")
 unique(x_codes$vocabulary_id) #  "CDT" "CPT4" "HCPCS" "ICD10CM" "ICD10PCS" "ICD9CM" "ICD9Proc"
@@ -78,7 +73,7 @@ Try mapping by visit_occurrence_id AND by date.
 ```{r, eval = FALSE}
 ## load all visit data from 2023 SD pull that map to a defined care site (not missing, Unclear, or Administrative)
 ## (generated in compile_data.R)
-vdat <- readRDS("/data/davis_lab/allie/care_sites/data/mdd_application/20230607_sd_pull_visit_occurrence_defined_sites_010525.Rds")
+vdat <- readRDS("/data/davis_lab/allie/care_sites/data/mdd_application/20230607_sd_pull_visit_occurrence_defined_sites_060825.Rds")
 n_distinct(vdat$GRID) # 2959903 total individuals with a visit mapped to a "defined" care site 
 
 ## get the total individual count per care site and per specialty
@@ -88,17 +83,17 @@ cs_grid_counts <- unique(vdat[,.(care_site_id, care_site_name, cs_n_grid, Specia
 spec_grid_counts <- unique(vdat[,.(SpecialtyLong, spec_n_grid)])
 setorder(cs_grid_counts, -cs_n_grid)
 setorder(spec_grid_counts, -spec_n_grid)
-saveRDS(cs_grid_counts, "/data/davis_lab/allie/care_sites/data/mdd_application/20230607_sd_pull_defined_sites_individual_counts_by_site_010525.Rds")
-saveRDS(spec_grid_counts, "/data/davis_lab/allie/care_sites/data/mdd_application/20230607_sd_pull_defined_sites_individual_counts_by_specialty_010525.Rds")
+saveRDS(cs_grid_counts, "/data/davis_lab/allie/care_sites/data/mdd_application/20230607_sd_pull_defined_sites_individual_counts_by_site_060825.Rds")
+saveRDS(spec_grid_counts, "/data/davis_lab/allie/care_sites/data/mdd_application/20230607_sd_pull_defined_sites_individual_counts_by_specialty_060825.Rds")
 
 ## map earliest depression icd codes to care sites via visit_occurrence_id
 icd_dep_visits_by_id <- merge(icd_dep_earliest, vdat, by = c("GRID","visit_occurrence_id"))
-saveRDS(icd_dep_visits_by_id, "/data/davis_lab/allie/care_sites/data/mdd_application/20230607_sd_pull_visit_occurrence_earliest_dep_icd_joined_by_visit_id_010525.Rds")
+saveRDS(icd_dep_visits_by_id, "/data/davis_lab/allie/care_sites/data/mdd_application/20230607_sd_pull_visit_occurrence_earliest_dep_icd_joined_by_visit_id_060825.Rds")
 
 ## map earliest depression icd codes to care sites via date
 icd_dep_visits_by_date <- merge(icd_dep_earliest, vdat, by = "GRID", allow.cartesian = TRUE)
 icd_dep_visits_by_date <- icd_dep_visits_by_date[entry_date >= visit_start_date & entry_date <= visit_end_date]
-saveRDS(icd_dep_visits_by_date, "/data/davis_lab/allie/care_sites/data/mdd_application/20230607_sd_pull_visit_occurrence_earliest_dep_icd_joined_by_date_010525.Rds")
+saveRDS(icd_dep_visits_by_date, "/data/davis_lab/allie/care_sites/data/mdd_application/20230607_sd_pull_visit_occurrence_earliest_dep_icd_joined_by_date_060825.Rds")
 
 n_distinct(icd_dep_visits_by_id$GRID) # 138491 individuals with earliest depression code mapping to a visit with a DEFINED CARE SITE by date (69.1% of total with depression)
 n_distinct(icd_dep_visits_by_date$GRID) # 149607 individuals with earliest depression code mapping to a visit with a DEFINED CARE SITE by date (74.7% of total with depression)
@@ -107,9 +102,9 @@ Will map by date 1) because there are more individuals and 2) for consistency wi
 
 ```{r}
 ## load file generated above (joined by date)
-icd_dep_visits <- readRDS("/data/davis_lab/allie/care_sites/data/mdd_application/20230607_sd_pull_visit_occurrence_earliest_dep_icd_joined_by_date_010525.Rds")
+icd_dep_visits <- readRDS("/data/davis_lab/allie/care_sites/data/mdd_application/20230607_sd_pull_visit_occurrence_earliest_dep_icd_joined_by_date_060825.Rds")
 head(icd_dep_visits)
-nrow(icd_dep_visits) # 186107
+nrow(icd_dep_visits) # 211834
 n_distinct(icd_dep_visits$GRID) # 149607
 ```
 
@@ -168,7 +163,7 @@ addWorksheet(wb, "Depression - Care Sites")
 writeData(wb, "Depression - Care Sites", care_site_supp)
 addWorksheet(wb, "Depression - Specialties")
 writeData(wb, "Depression - Specialties", specialty_supp)
-saveWorkbook(wb, "/data/davis_lab/allie/care_sites/output/mdd_application/SupplementalTable_depression_care_site_specialty_summary_010525.xlsx", overwrite = TRUE)
+saveWorkbook(wb, "/data/davis_lab/allie/care_sites/output/mdd_application/SupplementalTable_depression_care_site_specialty_summary_060825.xlsx", overwrite = TRUE)
 ```
 
 ## Plots
@@ -200,7 +195,7 @@ p2 <- caresite_manhattan_bar(caresite_plot_df_norm, points = T, flip = T) +
 
 p <- ggarrange(p1, p2, ncol=1,nrow=2)
 
-pdf("/data/davis_lab/allie/care_sites/output/mdd_application/earliest_dep_site_counts_mapped_by_date_miami_points_010525.pdf", width = 11, height = 8.5)
+pdf("/data/davis_lab/allie/care_sites/output/mdd_application/earliest_dep_site_counts_mapped_by_date_miami_points_060825.pdf", width = 11, height = 8.5)
 print(p)
 dev.off()
 ```
