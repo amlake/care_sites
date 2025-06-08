@@ -5,9 +5,10 @@ library(stringr)
 library(openxlsx)
 library(ggplot2)
 library(ggsci)
+#devtools::install_github("Mikata-Project/ggthemr")
 library(ggthemr)
 library(ggpubr)
-devtools::install_github("hms-dbmi/UpSetR")
+#devtools::install_github("hms-dbmi/UpSetR")
 library(UpSetR)
 library(ggplotify)
 library(data.table)
@@ -18,15 +19,15 @@ ggthemr("pale")
 setwd("/panfs/accrepfs.vampire/data/davis_lab/allie/care_sites")
 
 # Import care site map data
-CareSiteMap <- read.xlsx("./output/CareSite_VisitDetailCount_UPDATED_AML_010425.xlsx", 1, colNames=T) %>% filter(!is.na(Visits_N))
-CareSiteMap_MultiSpecialty <- vroom("./output/CareSiteMap_Multispecialty_Long_UPDATED_AML_010425.csv", delim=",")
+CareSiteMap <- read.xlsx("./output/CareSite_VisitDetailCount_UPDATED_JPS_052325.xlsx", 1, colNames=T) %>% filter(!is.na(Visits_N))
+CareSiteMap_MultiSpecialty <- vroom("./output/CareSiteMap_Multispecialty_Long_UPDATED_JPS_052325.csv", delim=",")
 
 # Load table with filtered care sites (no administrative or unclear specialties)
-FilteredCareSites <- read.xlsx("./output/CareSite_VisitDetailCount_FILTERED_AML_010425.xlsx", 1, colNames=T) %>%
+FilteredCareSites <- read.xlsx("./output/CareSite_VisitDetailCount_FILTERED_JPS_052325.xlsx", 1, colNames=T) %>%
   filter(!is.na(Visits_N))
 
 ###### Descriptives: Count number of unique patients and visits #####
-visitcounts <- fread(file="./output/CareSiteDescriptives_AML_010425/all_visit_counts.csv")
+visitcounts <- fread(file="./output/CareSiteDescriptives/encounters_annotated.csv")
 
 # All visits: count by setting
 visitsummary_all <- visitcounts %>% 
@@ -38,15 +39,14 @@ visitsummary_all <- visitcounts %>%
   pivot_longer(everything(), names_to = "Variable", values_to = "n")
 
 visitsummary_all
-#   Variable                 n
-#   <chr>                <dbl>
+#  Variable                 n
 # 1 n_person      3213825     
 # 2 n_care_sites     2545     
-# 3 total_visits 69307208     
-# 4 prop_outpt          0.892 
-# 5 prop_inpt           0.0578
-# 6 prop_emer           0.0266
-# 7 prop_unspec         0.0236
+# 3 total_visits 64983257     
+# 4 prop_outpt          0.908 
+# 5 prop_inpt           0.0425
+# 6 prop_emer           0.0279
+# 7 prop_unspec         0.0217
 
 # Visits with nonmissing care site id: count # of care sites and visits by mapped specialty
 visitsummary_nonmissing_caresite <- visitcounts %>% 
@@ -62,16 +62,15 @@ visitsummary_nonmissing_caresite <- visitcounts %>%
   pivot_longer(everything(), names_to = "Variable", values_to = "n")
 
 visitsummary_nonmissing_caresite
-#   Variable                     n
-#   <chr>                    <int>
+# Variable                     n
 # 1 n_care_sites              2544
 # 2 n_care_sites_filtered     2189
 # 3 n_care_sites_admin          34
 # 4 n_care_sites_unclear       321
-# 5 n_encounters          53934856
-# 6 n_encounters_filtered 45854959
-# 7 n_encounters_admin       28870
-# 8 n_encounters_unclear   8051027
+# 5 n_encounters          51823673
+# 6 n_encounters_filtered 43813329
+# 7 n_encounters_admin       27422
+# 8 n_encounters_unclear   7982922
 
 # All visits mapped to a defined, non-administrative specialty: count by setting
 # Not including null care sites or unclear or administrative specialties
@@ -96,20 +95,19 @@ visitsummary_mapped <- visitcounts %>%
 visitsummary_mapped %>% select(n_person, n_care_sites, total_visits) %>% head(1)
 #   n_person n_care_sites total_visits
 #      <int>        <int>        <int>
-# 1  2959903         2189     45854959
+# 1  2959903         2189     43813329
 
 visitsummary_mapped %>% select(-n_person, -n_care_sites, -total_visits)
 #   Variable        n      prop
-#   <chr>       <int>     <dbl>
-# 1 n_outpt  40222957 0.877    
-# 2 n_inpt    2722511 0.0594   
-# 3 n_emer    1291659 0.0282   
-# 4 n_unspec  1617832 0.0353   
-# 5 n_adult  36166236 0.789    
-# 6 n_ped     9688723 0.211    
-# 7 n_male   19765146 0.431    
-# 8 n_female 26088861 0.569    
-# 9 n_unk         952 0.0000208
+# 1 n_outpt  39225944 0.895    
+# 2 n_inpt    1916799 0.0437   
+# 3 n_emer    1282465 0.0293   
+# 4 n_unspec  1388121 0.0317   
+# 5 n_adult  34501559 0.787    
+# 6 n_ped     9311770 0.213    
+# 7 n_male   18854997 0.430    
+# 8 n_female 24957417 0.570    
+# 9 n_unk         915 0.0000209
 
 n_spec <- CareSiteMap_MultiSpecialty %>%
   filter(SpecialtyLong != "Unclear" & SpecialtyLong != "Administrative") %>%
@@ -162,11 +160,11 @@ visitsummary_pretty <- tibble(
   )
 )
 
-fwrite(visitsummary_pretty, "./output/Figures/Descriptives/SupplementalTable1_VisitDescriptives_AML_010425.csv")
+fwrite(visitsummary_pretty, "./output/Figures/Descriptives/SupplementalTable1_VisitDescriptives_JPS_052325.csv")
 
 ###### Supplemental Table 2: Summary of care sites by demographic characteristics #####
 ## Count how many NAs there are in the descriptive variables
-# Only pherank has missingness (missing in 93 sites 2/2 missing phecodes in sites w/ little actual billing)
+# Only pherank has missingness (missing in 98 sites 2/2 missing phecodes in sites w/ little actual billing)
 FilteredCareSites %>% 
   summarise(across(c(Person_N, Visits_N, VisitYear_Median, Age_Median,
                     Adult_Percent, Female_Percent,
@@ -195,7 +193,7 @@ FilteredCareSites %>%
   pull(specialty) %>%
   unique()
 # 57 PRIMARY specialties
-# 58 TOTAL specialtiesbecause urgent care is only a secondary specialty
+# 58 TOTAL specialties because urgent care is only a secondary specialty
 
 ## Create table with descriptive statistics across all care sites
 # Calculate all statistics once
@@ -256,10 +254,15 @@ bind_rows(FilteredCareSites %>% count(AgeSpecific) %>% arrange(desc(n)) %>% muta
 # Combine quantitative and categorical results
 desc_maintable_pretty <- bind_rows(desc_median_pretty, categorical_counts)
 
-fwrite(desc_maintable_pretty, "./output/Figures/Descriptives/SupplementalTable2_CareSiteDescriptives_AML_010425.csv")
+fwrite(desc_maintable_pretty, "./output/Figures/Descriptives/SupplementalTable2_CareSiteDescriptives_JPS_052325.csv")
 
 ###### Supplemental Figure 1: Histogram by visit year #####
 FilteredCareSites %>% group_by(x_type) %>% summarise(min(VisitYear_Median))
+
+# x_type  `min(VisitYear_Median)`
+# 1 EPIC-IP                    2017
+# 2 EPIC-OP                    2016
+# 3 STAR-IP                    1998
 
 # Create year period factor
 hist_visityear <- FilteredCareSites %>%
@@ -284,7 +287,7 @@ hist_visityear <- FilteredCareSites %>%
     legend.position = c(0.2,0.8)
   )
 
-pdf("output/Figures/Descriptives/SupplementalFigure1_VisitYearHistogram_JPS_011525.pdf", width = 6, height = 6)
+pdf("output/Figures/Descriptives/SupplementalFigure1_VisitYearHistogram_JPS_052325.pdf", width = 6, height = 6)
 print(hist_visityear)
 dev.off()
 
@@ -303,7 +306,7 @@ desc_byspecialty_suppltable <- FilteredCareSites %>%
   )
 
 # Write to file
-fwrite(desc_byspecialty_suppltable, "./output/Figures/Descriptives/SupplementalTable3_CareSiteDescriptivesBySpecialty_AML_010425.csv")
+fwrite(desc_byspecialty_suppltable, "./output/Figures/Descriptives/SupplementalTable3_CareSiteDescriptivesBySpecialty_JPS_052325.csv")
 
 ###### Figure 2: Number of Care Sites & Number of visits by setting per Specialty ###### 
 ## Unique specialty combinations: count # of care sites 
@@ -313,16 +316,17 @@ spec_caresite_ct <- FilteredCareSites %>%
   arrange(desc(n))
 
 # Annotate specialties by group
-write.csv(spec_caresite_ct, file="./output/Figures/Descriptives/Specialties_NCareSites_Label_ForAnnotation_AML_010425.csv", row.names = F)
+write.csv(spec_caresite_ct, file="./output/Figures/Descriptives/Specialties_NCareSites_Label_ForAnnotation_JPS_052325.csv", row.names = F)
 
 x_labels <- vroom("./output/Figures/Descriptives/Specialties_NCareSites_Label_ANNOTATED.csv", col_select = c(1, 3))
-fwrite(x_labels, "./output/Figures/Descriptives/Specialties_NCareSites_Label_ANNOTATED_AML_010425.csv")
 
 ## keep labels, update N per site with new numbers
 x_labels_new <- x_labels %>% 
   left_join(spec_caresite_ct, by="MappedSpecialty") %>% 
   select(MappedSpecialty, n, Group)
-  
+
+fwrite(x_labels_new, "./output/Figures/Descriptives/Specialties_NCareSites_Label_ANNOTATED_JPS_052325.csv")
+
 # Make dataset with primary specialties only
 spec_visit_ct <- FilteredCareSites %>% 
   group_by(MappedSpecialty) %>% 
@@ -334,8 +338,12 @@ spec_visit_ct <- FilteredCareSites %>%
   mutate(id = row_number()) %>%
   as.data.frame()
 
-spec_visit_ct %>% summarise(n=n())
+spec_visit_ct %>% summarise(n())
+spec_visit_ct %>% summarise(sum(total_visits))
+spec_visit_ct %>% filter(id<=5)
 spec_visit_ct %>% filter(id<=25)
+
+fwrite(spec_visit_ct, "./output/Figures/Descriptives/CareSiteDescriptivesBySpecialty_SUMbySpecialty_JPS_052325.csv")
 
 # Make dataset for figure
 figure2 <- spec_visit_ct %>%
@@ -405,7 +413,7 @@ count_visits_byspecialty <- ggplot(figure2,
         plot.margin =  margin(t = 0, r = 0.1, b = -0.2, l = 0.1, unit = "cm"),
         legend.title = element_text(size = 8), legend.text = element_text(size = 6))
 
-pdf("output/Figures/Descriptives/Figure2_Specialties_NCareSites_NVisits_AML_010425.pdf", width = 7, height = 7)
+pdf("output/Figures/Descriptives/Figure2_Specialties_NCareSites_NVisits_JPS_052325.pdf", width = 7, height = 7)
 ggarrange(count_caresites_byspecialty, count_visits_byspecialty, nrow=2, ncol=1, heights = c(1.5, 2))
 dev.off()
 
@@ -463,10 +471,14 @@ specialty_list <- top_specialties %>%
 FilteredCareSites %>% 
   filter(MappedSpecialty=="PrimaryCare") %>% 
   summarise(n_care_sites = n_distinct(care_site_id), total_visits = sum(Visits_N))
+#   n_care_sites total_visits
+# 1          201      8777949
 
 FilteredCareSites %>% 
   filter(MappedSpecialty=="PrimaryCare" & MultiSpecialty_Secondary=="UrgentCare") %>% 
   summarise(n_care_sites = n_distinct(care_site_id), total_visits = sum(Visits_N))
+#   n_care_sites total_visits
+# 1           48      2354777
 
 # Apply all replacements at once
 specialty_list <- str_replace_all(specialty_list, specialty_names)
@@ -502,7 +514,7 @@ upsetcount_byspecialty <- upset(figure_suppl2,
       sets.x.label = "Unique care sites",
       sets.bar.color = set_colors)
 
-pdf("output/Figures/Descriptives/SupplementalFigure2_UpsetPlot_Specialties_JPS_011525.pdf", width = 7, height = 7)
+pdf("output/Figures/Descriptives/SupplementalFigure2_UpsetPlot_Specialties_JPS_052325.pdf", width = 7, height = 7)
 print(upsetcount_byspecialty)
 dev.off()
 
@@ -512,11 +524,11 @@ Top50 <- FilteredCareSites %>%
   mutate(Group = factor(Group, levels = c("Medical", "Surgical", "Other"))) %>%
   arrange(desc(Visits_N)) %>% filter(row_number()<=50)
 
-write.xlsx(Top50, "./output/Figures/Descriptives/SupplementalTable4_Top50MostCommonCareSites_AML_010425.xlsx", colWidths = "auto")
+write.xlsx(Top50, "./output/Figures/Descriptives/SupplementalTable4_Top50MostCommonCareSites_JPS_052325.xlsx", colWidths = "auto")
 
 ###### Supplemental Table 5: Cardiology care sites with annotated features #####
 Cardiology <- FilteredCareSites %>% 
   filter(MappedSpecialty=="Cardiology") %>% 
   arrange(desc(Visits_N))
 
-write.xlsx(Cardiology, "./output/Figures/Descriptives/SupplementalTable5_CardiologyCareSites_AML_010425.xlsx", colWidths = "auto")
+write.xlsx(Cardiology, "./output/Figures/Descriptives/SupplementalTable5_CardiologyCareSites_JPS_052325.xlsx", colWidths = "auto")
