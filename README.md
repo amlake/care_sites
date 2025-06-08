@@ -40,6 +40,7 @@ Working directory: /data/davis_lab/allie/care_sites
 
 ### Depression analyses
 #### :white_check_mark: [compile_data.R](https://bitbucket.org/davislabteam/care_sites/src/master/mdd_application/compile_data.R)
-#### [mdd_care_sites.Rmd](http://bitbucket.org/davislabteam/care_sites/src/master/mdd_application/mdd_care_sites.Rmd)
-#### [prs_regression.Rmd](https://bitbucket.org/davislabteam/care_sites/src/master/mdd_application/prs_regression.Rmd)
-    
+#### :white_check_mark: [mdd_care_sites.Rmd](http://bitbucket.org/davislabteam/care_sites/src/master/mdd_application/mdd_care_sites.Rmd)
+#### :white_check_mark: [prs_regression.Rmd](https://bitbucket.org/davislabteam/care_sites/src/master/mdd_application/prs_regression.Rmd)
+#### :white_check_mark: [antidepressant_care_sites.Rmd](https://bitbucket.org/davislabteam/care_sites/src/master/mdd_application/antidepressant_care_sites.Rmd)
+#### :white_check_mark: [depression_st_analyses_descriptive_table.R](https://bitbucket.org/davislabteam/care_sites/src/master/mdd_application/depression_st_analyses_descriptive_table.R)
