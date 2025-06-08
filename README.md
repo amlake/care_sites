@@ -27,7 +27,7 @@ Working directory: /data/davis_lab/allie/care_sites
         * ./data/sd_data_qc/20230607_sd_pull_x_codes_dates_cleaned_overlapping_grids_mega_grids_EU_AA.txt
         * ./data/sd_data_qc/20230607_sd_pull_visit_occurrence_dates_cleaned_overlapping_grids_mega_grids_EU_AA.txt
 
-### :bangbang: [CreateDescriptives_CareSites.r](https://bitbucket.org/davislabteam/care_sites/src/master/CreateDescriptives_CareSites.r)
+### :white_check_mark: [CreateDescriptives_CareSites.r](https://bitbucket.org/davislabteam/care_sites/src/master/CreateDescriptives_CareSites.r)
 * Characterize care site by patient demographics
 * Characterize care site by visit number and visit type
 * Top ICD and CPT codes for each care site
