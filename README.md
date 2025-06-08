@@ -36,5 +36,10 @@ Working directory: /data/davis_lab/allie/care_sites
 ### :bangbang: [MakeFigures.r](https://bitbucket.org/davislabteam/care_sites/src/master/MakeFigures.r)
 ### :bangbang: [stankey.Rmd](https://bitbucket.org/davislabteam/care_sites/src/master/stankey.Rmd): Make Sankey plots
 * Depends on: [CreateDescriptives_CareSites.r](https://bitbucket.org/davislabteam/care_sites/src/master/CreateDescriptives_CareSites.r)
-* Exclude: unknown, administrative, phlebotomy, radiology, research
+* Exclude from plots: unknown, administrative, phlebotomy, radiology, research
+
+### Depression analyses
+#### :white_check_mark: [compile_data.R](https://bitbucket.org/davislabteam/care_sites/src/master/mdd_application/compile_data.R)
+#### [mdd_care_sites.Rmd](http://bitbucket.org/davislabteam/care_sites/src/master/mdd_application/mdd_care_sites.Rmd)
+#### [prs_regression.Rmd](https://bitbucket.org/davislabteam/care_sites/src/master/mdd_application/prs_regression.Rmd)
     
