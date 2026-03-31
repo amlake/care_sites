@@ -1,5 +1,5 @@
 ---
-title: "dep care sites"
+title: "Antidepressant care sites"
 author: "Allie Lake"
 date: "`r format(Sys.Date(), '%B %d, %Y')`"
 output:
@@ -11,7 +11,7 @@ output:
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-pacman::p_load(data.table, dplyr, ggplot2, PheWAS, openxlsx, foreach, ggthemr, ggrepel, ggpubr, RColorBrewer, lubridate)
+pacman::p_load(data.table, dplyr, ggplot2, openxlsx, foreach, ggthemr, ggrepel, ggpubr, RColorBrewer, lubridate)
 options(scipen=999)
 ggthemr_reset()
 

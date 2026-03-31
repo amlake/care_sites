@@ -22,7 +22,7 @@ ggthemr_reset()
 or_format_func <- function(OR, ci_lower, ci_upper) {
   return(
     paste0(sprintf(
-      "%s (%s-%s)",
+      "%s (%s, %s)",
       formatC(OR, format = "f", digits = 2),
       formatC(ci_lower, format = "f", digits = 2),
       formatC(ci_upper, format = "f", digits = 2)
@@ -36,6 +36,14 @@ process_logit <- function(mdl) {
   output$OR <- exp(output$estimate)
   output$ci.lower <- exp(output$estimate-1.96*output$std.error)
   output$ci.upper <- exp(output$estimate+1.96*output$std.error)
+  output
+}
+
+#### Function to process linear regression output ####
+process_lm <- function(mdl) {
+  output <- tidy(mdl)
+  output$ci.lower <- output$estimate-1.96*output$std.error
+  output$ci.upper <- output$estimate+1.96*output$std.error
   output
 }
 
@@ -66,12 +74,16 @@ map <- fread("/data/davis_lab/allie/care_sites/output/CareSiteMap_Multispecialty
 med_age <- fread("/data/davis_lab/shared/phenotype_data/biovu/delivered_data/sd_wide_phewas_covariates/20230607_sd_wide_covariates_121023.txt") %>%
   select(GRID, median_age)
 
-## load covariates and depression PGS
+# load covariates and depression PGS
 ## see compile_data.R for details on how this file was created
 dat <- readRDS("/data/davis_lab/allie/care_sites/data/mega_eur_covariates_psych_pgs_060825.Rds") %>%
   filter(genetic_ancestry == "EUR") %>% 
-  select(c("GRID", sex = gender_source_value, paste0("PC", 1:10), "pgs.dep.scale")) %>%
+  select(c("GRID", sex = gender_source_value, paste0("PC", 1:10))) %>%
   left_join(med_age, by = "GRID") 
+
+pgs <- fread("../../data/makepgs_mdd/results_mdd_eur_012626/mdd_eur_012626.profile") %>%
+  select(GRID = IID, pgs.dep = SCORE)
+dat <- merge(dat, pgs, by = "GRID")
 ```
 
 ### Define code-based depression phenotypes
@@ -81,7 +93,7 @@ dat <- readRDS("/data/davis_lab/allie/care_sites/data/mega_eur_covariates_psych_
 # Case = has ≥1 code on ≥2 distinct dates
 # Control = 0 codes
 # Excluded = only 1 code
-icd_dep <- readRDS("/data/davis_lab/allie/care_sites/data/mdd_application/20230607_sd_pull_x_codes_icd_depression_010525.Rds") %>% 
+icd_dep <- readRDS("/data/davis_lab/allie/care_sites/data/mdd_application/20230607_sd_pull_x_codes_icd_depression_033026.Rds") %>% 
   select(GRID, entry_date) %>%
   distinct() %>% 
   group_by(GRID) %>% 
@@ -124,6 +136,8 @@ visit <- readRDS("/data/davis_lab/allie/care_sites/data/mdd_application/20230607
     * case = has depression phecode - N+ distinct dates
     * control = no depression phecode
     * excluded = has only 1-(N-2) distinct depression code-dates
+    
+Remove individuals with exactly 1 depression code from subsequent analyses.
 ```{r}
 psych_sites <- unique(map[SpecialtyLong == "Psychiatry", care_site_id])
 psych_grids <- unique(visit[care_site_id %in% psych_sites, GRID])
@@ -133,7 +147,15 @@ dat[, mdd_psych_site := ifelse(mdd==1 & psych_cohort==1, 1,
                                 ifelse(mdd==0,0,-9))]
 
 dat[, mdd_pheno := ifelse(mdd_psych_site == 1, "mdd+site", ifelse(mdd == 1, "mdd_no_site", ifelse(mdd == 0, "control", "excluded")))]  
+
+## exclude individuals with only 1 depression code
+dat <- dat[mdd_pheno != "excluded"]
 head(dat)                 
+```
+
+Z-score normalize PGS in final analysis cohort
+```{r}
+dat[,pgs.dep.scale := scale(pgs.dep)]
 ```
 
 ```{r}
@@ -179,29 +201,27 @@ dat %>%
   summarise(n = n(), min_n_dep_code = min(n_dep_code), max_n_dep_code = max(n_dep_code))
 ```
 
-## Raw PGS comparison
+## PGS comparison
 ```{r}
 my_comparisons <- list( c("Control", "2+ Codes Only"), c("Control", "2+ Codes + Psych. Visit"), c("2+ Codes Only", "2+ Codes + Psych. Visit") )
 
 dat_plot <-  dat %>% 
-  filter(mdd_pheno != "excluded") %>%
-  mutate(mdd_pheno = factor(mdd_pheno, levels = c("control", "mdd_no_site", "mdd+site"), labels = c("Control", "2+ Codes Only", "2+ Codes + Psych. Visit"))) %>% 
-  mutate(mdd_pheno = as.character(mdd_pheno)) %>%
+  mutate(mdd_pheno_labels = factor(mdd_pheno, levels = c("control", "mdd_no_site", "mdd+site"), labels = c("Control", "2+ Codes Only", "2+ Codes + Psych. Visit"))) %>% 
   data.table()
 
 p1 <- dat_plot %>%
-  ggplot(aes(x = mdd_pheno, fill = mdd_pheno, pgs.dep.scale)) +
+  ggplot(aes(x = mdd_pheno_labels, fill = mdd_pheno_labels, pgs.dep.scale)) +
   geom_violin(alpha = 0.7) +
   geom_boxplot(width = 0.3) +
   scale_y_continuous(expand = expansion(mult = 0.05)) +
-  labs(x = "Phenotype", y = "Scaled Depression Polygenic Score", fill = "") +
+  labs(x = "Phenotype", y = "Depression Polygenic Score", fill = "") +
   stat_compare_means(comparisons = my_comparisons, method = "t.test", label = "p.signif") +
   theme_bw() +
   theme(legend.position = "none", 
         axis.text.x = element_text(size = 7, angle = 20, hjust = 1), 
         axis.title.x = element_text(margin = margin(t = 1)))
 
-pdf("/data/davis_lab/allie/care_sites/output/mdd_application/mdd_raw_pgs_comparison_060825.pdf", width = 6, height = 5)
+pdf("/data/davis_lab/allie/care_sites/output/mdd_application/mdd_pgs_comparison_033126.pdf", width = 6, height = 5)
 print(p1)
 dev.off()
 ```
@@ -213,24 +233,37 @@ print(p1)
 ### Stats
 ```{r}
 ## Codes only vs Controls
-t.test(dat_plot[ mdd_pheno == "2+ Codes Only", pgs.dep.scale], dat_plot[ mdd_pheno == "Control", pgs.dep.scale])
+t.test(dat_plot[ mdd_pheno == "mdd_no_site", pgs.dep.scale], dat_plot[ mdd_pheno == "control", pgs.dep.scale])
+comp1 <- process_lm(lm(pgs.dep.scale ~ mdd_pheno + sex + median_age + PC1+PC2+PC3+PC4+PC5+PC6+PC7+PC8+PC9+PC10, 
+   data = dat_plot[mdd_pheno %in% c("mdd_no_site", "control")])) %>% 
+  mutate(test = "2+ Codes Only vs Control")
 
 ## Codes+Psych vs Controls
-t.test(dat_plot[ mdd_pheno == "2+ Codes + Psych. Visit", pgs.dep.scale], dat_plot[ mdd_pheno == "Control", pgs.dep.scale])
+t.test(dat_plot[mdd_pheno == "mdd+site", pgs.dep.scale], dat_plot[mdd_pheno == "control", pgs.dep.scale])
+comp2 <- process_lm(lm(pgs.dep.scale ~ mdd_pheno + sex + median_age + PC1+PC2+PC3+PC4+PC5+PC6+PC7+PC8+PC9+PC10, 
+   data = dat_plot[mdd_pheno %in% c("mdd+site", "control")])) %>%
+  mutate(test = "2+ Codes + Psych. Visit vs Control")
 
 ## Codes+Psych vs Codes only
-t.test(dat_plot[ mdd_pheno == "2+ Codes + Psych. Visit", pgs.dep.scale], dat_plot[ mdd_pheno == "2+ Codes Only", pgs.dep.scale])
+t.test(dat_plot[ mdd_pheno == "mdd+site", pgs.dep.scale], dat_plot[ mdd_pheno == "mdd_no_site", pgs.dep.scale])
+comp3 <- process_lm(lm(pgs.dep.scale ~ mdd_pheno + sex + median_age + PC1+PC2+PC3+PC4+PC5+PC6+PC7+PC8+PC9+PC10, 
+   data = dat_plot[mdd_pheno %in% c("mdd+site", "mdd_no_site")])) %>%
+  mutate(test = "2+ Codes + Psych. Visit vs 2+ Codes Only")
+
+res_lm <- data.table(rbind(comp1, comp2, comp3))
+res_lm[, beta_format := apply(.SD, 1, function(x) or_format_func(x[1], x[2], x[3])), .SDcols = c("estimate", "ci.lower", "ci.upper")]
+res_lm$p.value.fmt <- sapply(res_lm$p.value, rounding_func)
 ```
 
 ## PGS regression analysis
 ```{r}
 ## outcome = depression phecode (2+ codes)
 mdl_mdd <- glm(mdd ~ pgs.dep.scale + sex + median_age + PC1+PC2+PC3+PC4+PC5+PC6+PC7+PC8+PC9+PC10, 
-           data = dat[mdd!=-9], family = "binomial")
+           data = dat, family = "binomial")
 
 res_mdd <- process_logit(mdl_mdd) %>% 
   mutate(pheno = "2+ Codes", 
-         n_total = nrow(dat[mdd!=-9]), 
+         n_total = nrow(dat), 
          n_cases = nrow(dat[mdd==1]), 
          n_controls = nrow(dat[mdd==0]))
 
@@ -308,7 +341,7 @@ p2 <- res_combined %>%
         panel.grid.major.y = element_blank(),
         plot.margin =  margin(t = 0.2, r = 0.2, b = 0.2, l = 0.1, unit = "cm")) 
 
-pdf("/data/davis_lab/allie/care_sites/output/mdd_application/mdd_pgs_regression_forest_plot_060825.pdf", width = 6, height = 4)
+pdf("/data/davis_lab/allie/care_sites/output/mdd_application/mdd_pgs_regression_forest_plot_033126.pdf", width = 6, height = 4)
 print(p2)
 dev.off()
 ```
@@ -321,7 +354,7 @@ print(p2)
 ```{r}
 p3 <- ggarrange(p1, p2, ncol = 2, nrow = 1, widths = c(1, 0.85), labels = c("A", "B"))
 
-pdf("/data/davis_lab/allie/care_sites/output/mdd_application/mdd_pgs_regression_violins_forest_combined_060825.pdf", width = 7, height = 5)
+pdf("/data/davis_lab/allie/care_sites/output/mdd_application/mdd_pgs_regression_violins_forest_combined_033126.pdf", width = 7, height = 5)
 print(p3)
 dev.off()
 ```
@@ -332,7 +365,8 @@ print(p3)
 
 ## Supplemental tables
 ```{r}
-supp_table <- copy(res_combined) %>% 
+## logistic regression results
+supp_table <- res_combined %>% 
   select(term, beta = estimate, std.error, statistic, OR, ci.lower, ci.upper, p.value, n_total, n_cases, pheno) %>%
   as.data.frame() %>% data.table()
 
@@ -340,18 +374,34 @@ supp_table[pheno == "2+ Codes +\nPsych. Visit", pheno := "2+ Codes + Psych. Visi
 supp_table[, pheno := as.character(pheno)]
 setnames(supp_table, "pheno", "Phenotype")
 
+## linear regression results
+supp_table_lm <- res_lm %>%
+  select(term, beta = estimate, std.error, statistic, ci.lower, ci.upper, p.value, Test = test) %>%
+  as.data.frame() %>% data.table()
+
 ## write to excel
 wb <- createWorkbook()
-for (pheno in unique(supp_table$Phenotype)) {
-  addWorksheet(wb, pheno)
-  writeData(wb, pheno, supp_table[Phenotype == pheno] %>% select(-Phenotype))
+for (test in unique(supp_table_lm$Test)) {
+  sheet_name <- paste0("Fig5A ", test)
+  sheet_name <- gsub("2+ Codes", "Codes", sheet_name, fixed = T)
+  sheet_name <- gsub("Control", "Ctrl", sheet_name)
+  sheet_name <- gsub("Codes + Psych. Visit", "Codes+Visit", sheet_name, fixed = T)
+  addWorksheet(wb, sheet_name)
+  writeData(wb, sheet_name, supp_table_lm[Test == test] %>% select(-Test))
 }
-saveWorkbook(wb, paste0("/data/davis_lab/allie/care_sites/output/mdd_application/SupplementalTable_depression_pgs_regression_results_", "060825", ".xlsx"), overwrite = TRUE)
+
+for (pheno in unique(supp_table$Phenotype)) {
+  sheet_name <- paste0("Fig5B ", pheno)
+  sheet_name <- gsub("Codes + Psych. Visit", "Codes+Visit", sheet_name, fixed = T)
+  addWorksheet(wb, sheet_name)
+  writeData(wb, sheet_name, supp_table[Phenotype == pheno] %>% select(-Phenotype))
+}
+saveWorkbook(wb, paste0("/data/davis_lab/allie/care_sites/output/mdd_application/SupplementalTable_depression_pgs_regression_results_", "033126", ".xlsx"), overwrite = TRUE)
 ```
 
 ### Save analysis cohort for supplemental table created in depression_analyses_descriptive_table.R
 ```{r}
-dat %>% filter(mdd!=-9) %>%
+dat %>%
   select(GRID, sex, median_age, mdd, mdd_pheno, psych_cohort, mdd_psych_site) %>%
-  fwrite("/data/davis_lab/allie/care_sites/data/mdd_application/mdd_pgs_regression_cohort_060825.csv")
+  fwrite("/data/davis_lab/allie/care_sites/data/mdd_application/mdd_pgs_regression_cohort_033126.csv")
 ```

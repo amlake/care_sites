@@ -22,7 +22,6 @@ caresite_manhattan_bar <- function(dat, points = FALSE, flip = FALSE) {
     plot_df[, N := ifelse(N<3, N + 10, N + 5)]
 
     ## Group specialties into 3 groups: Medical, Surgical, Other
-    ## TODO: confirm with John that this is the correct annotation file
     Specialties_3group <- fread("/data/davis_lab/allie/care_sites/output/Figures/Descriptives/Specialties_NCareSites_Label_ANNOTATED.csv") %>%
         rename(specialty = MappedSpecialty) %>%
         filter(specialty %in% plot_df$specialty) %>%
@@ -74,15 +73,15 @@ caresite_manhattan_bar <- function(dat, points = FALSE, flip = FALSE) {
         plot_df <- merge(plot_df, spec_order, by = "specialty")
     }
 
-    ## label the top 5 care sites in each specialty (after filtering out those with freq_phe_per_site < 0.01)
+    ## label the top care site in each specialty (after filtering out those with freq_phe_per_site < 0.01)
     plot_df_label <- plot_df %>%
         filter(abs(freq_phe_per_site) >= 0.01) %>%
         arrange(desc(abs(freq_phe_per_site))) %>%
         group_by(specialty) %>%
-        slice(1:5)
+        slice(1:1)
 
     ## create the plot
-    p <- ggplot(plot_df, aes(x = RowNumber, y = freq_phe_per_site, fill = Group_Shade))
+    p <- ggplot(plot_df, aes(x = RowNumber, y = freq_phe_per_site*100, fill = Group_Shade))
 
     if (points == TRUE) { 
         p <- p + geom_point(shape = ifelse(flip == TRUE, 25, 24), size = 3)
@@ -94,9 +93,10 @@ caresite_manhattan_bar <- function(dat, points = FALSE, flip = FALSE) {
         geom_label_repel(
             data = plot_df_label,
             aes(label = care_site_name),
-            size = 2.5,
+            size = 4,
             box.padding = 0.5, point.padding = 0.5,
-            vjust = 0.5, hjust = 0.5, max.overlaps = 20
+            vjust = ifelse(flip==TRUE, -0.75, 0.75), hjust = 0.5, max.overlaps = 10,
+            min.segment.length = 0
         ) +
         scale_x_continuous(breaks = midpoint_labels$midpoint, labels = midpoint_labels$specialty) +
         scale_fill_manual(values = group_colors) +
@@ -110,7 +110,7 @@ caresite_manhattan_bar <- function(dat, points = FALSE, flip = FALSE) {
             axis.title.y = element_text(hjust = 0.5),
             legend.position = "none",
             panel.grid.major.x = element_blank(), panel.grid.minor.x = element_blank(),
-            plot.margin =  margin(t = 0.2, r = 0, b = -0.9, l = 0.2, unit = "cm")
+            plot.margin =  margin(t = 0.2, r = 0, b = -0.5, l = 0.2, unit = "cm")
         )
 
     if (flip == TRUE) {

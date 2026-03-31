@@ -35,7 +35,7 @@ person <- person %>%
     ))
 
 ## Depression code cohort
-dep_cohort <- readRDS("/data/davis_lab/allie/care_sites/data/mdd_application/20230607_sd_pull_visit_occurrence_earliest_dep_icd_joined_by_date_060825.Rds") %>%
+dep_cohort <- readRDS("/data/davis_lab/allie/care_sites/data/mdd_application/20230607_sd_pull_visit_occurrence_earliest_dep_icd_joined_by_date_033026.Rds") %>%
     group_by(GRID) %>%
     filter(visit_start_date == min(visit_start_date)) %>%
     ungroup() %>%
@@ -63,7 +63,7 @@ med_cohort <- readRDS("/data/davis_lab/allie/care_sites/data/mdd_application/202
 stopifnot(n_distinct(med_cohort$GRID) == nrow(med_cohort))
 
 ## MDD PRS cohort
-pgs_cohort <- fread("/data/davis_lab/allie/care_sites/data/mdd_application/mdd_pgs_regression_cohort_060825.csv") %>%
+pgs_cohort <- fread("/data/davis_lab/allie/care_sites/data/mdd_application/mdd_pgs_regression_cohort_033126.csv") %>%
     select(GRID,median_age) %>% 
     left_join(person, by = "GRID") %>% 
     select(GRID, sex = gender_source_value, visit_age = median_age, race, ethnicity = ethnicity_source_value) %>%
@@ -71,27 +71,10 @@ pgs_cohort <- fread("/data/davis_lab/allie/care_sites/data/mdd_application/mdd_p
 
 # NOTE- here, we are defining visit age as the pre-calculated median age across ALL ICD codes for each individual
 
-## ST cohort
-## load file generated in trauma_care_sites.Rmd
-st_notes_visits <- readRDS("/data/davis_lab/allie/care_sites/data/mdd_application/20230607_sd_pull_visit_occurrence_earliest_st_note_joined_by_date_060825.Rds")
-nrow(st_notes_visits) # 14844
-n_distinct(st_notes_visits$GRID) # 11339
-
-st_cohort <- st_notes_visits %>% 
-    group_by(GRID) %>%
-    filter(NOTE_DATE == min(NOTE_DATE)) %>%
-    ungroup() %>%
-    left_join(person, by = "GRID") %>%
-    mutate(DOB = as.Date(birth_datetime)) %>%
-    mutate(visit_age = as.numeric(difftime(NOTE_DATE, DOB, units = "days")) / 365.25) %>%
-    select(GRID, sex = gender_source_value, race, ethnicity = ethnicity_source_value, visit_age) %>%
-    mutate(cohort = "Sexual trauma cohort") %>% 
-    distinct()
-
 ## Combined table
 length(intersect(dep_cohort$GRID, med_cohort$GRID)) # 78568 overlapping GRIDs between depression and med cohorts
-combined_cohort <- rbind(dep_cohort, med_cohort, pgs_cohort,st_cohort)
-combined_cohort$cohort <- factor(combined_cohort$cohort, levels = c("Depression code cohort", "Antidepressant cohort", "Depression PGS cohort", "Sexual trauma cohort"))
+combined_cohort <- rbind(dep_cohort, med_cohort, pgs_cohort)
+combined_cohort$cohort <- factor(combined_cohort$cohort, levels = c("Depression code cohort", "Antidepressant cohort", "Depression PGS cohort"))
 
 # Variable factor levels and labels
 combined_cohort$sex <- factor(combined_cohort$sex, levels = c("M", "F", "U"), labels = c("Male", "Female", "Unspecified")) 
