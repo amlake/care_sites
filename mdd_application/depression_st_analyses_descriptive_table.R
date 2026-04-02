@@ -49,7 +49,7 @@ dep_cohort <- readRDS("/data/davis_lab/allie/care_sites/data/mdd_application/202
 stopifnot(n_distinct(dep_cohort$GRID) == nrow(dep_cohort))
 
 ## Antidepressant cohort
-med_cohort <- readRDS("/data/davis_lab/allie/care_sites/data/mdd_application/20230607_sd_pull_visit_occurrence_earliest_med_joined_by_date_060825.Rds") %>%
+med_cohort <- readRDS("/data/davis_lab/allie/care_sites/data/mdd_application/20230607_sd_pull_visit_occurrence_earliest_med_joined_by_date_040126.Rds") %>%
     group_by(GRID) %>%
     filter(visit_start_date == min(visit_start_date)) %>%
     ungroup() %>%

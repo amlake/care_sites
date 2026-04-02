@@ -23,12 +23,10 @@ message("loading drug_exposure table...")
 d <- fread("/data/davis_lab/shared/phenotype_data/biovu/delivered_data/sd_wide_pull/20230607_pull/20230607_sd_pull_drug_exposure_all.txt.gz",quote="")
 
 ## regex search for the relevant drugs
-## this step takes ~1 hour
 d_med <- d[grepl(list_med_regex,toupper(drug_source_value))]
 rm(d)
 gc()
 d_med[,matched_drug := str_extract(toupper(drug_source_value), list_med_regex)]
-
 
 ## convert brand names to generic
 list_med_brand <- list_med[!is.na(Brand_name),.(toupper(Generic_name), toupper(Brand_name))] 
