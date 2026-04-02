@@ -1,13 +1,9 @@
 # README
 
-## Scripts and data
-Working directory: /data/davis_lab/allie/care_sites
+## Care sites project scripts
+ACCRE working directory: /data/davis_lab/allie/care_sites
 
-### :white_check_mark: Manually annotated care site map
-* ./data/CareSite_map_011024_release-1/CareSite_Map_011024.xlsx
-* ./data/CareSite_map_011024_release-1/CareSite_Map_Multispecialty_Long_Format_011024.csv
-
-### :white_check_mark: [sd_data_qc.R](https://bitbucket.org/davislabteam/care_sites/src/master/sd_data_qc.R): Load and clean tables from 2023-06-07 SD pull on ACCRE
+### [sd_data_qc.R](https://github.com/amlake/care_sites/blob/master/sd_data_qc.R): Load and clean tables from 2023-06-07 SD pull on ACCRE
 * Clean PERSON table
     * Remove GRIDs with missing birth dates
     * DOB filter: 1898 to 2023-03-31
@@ -18,29 +14,28 @@ Working directory: /data/davis_lab/allie/care_sites
     * Remove encounters with negative age at encounter
     * Encounter date filter: 1998 to 2023-03-31
 * Output files:
-    * Full SD
-        * ./data/sd_data_qc/20230607_sd_pull_person_dates_cleaned_overlapping_grids.txt
-        * ./data/sd_data_qc/20230607_sd_pull_x_codes_dates_cleaned_overlapping_grids.txt
-        * ./data/sd_data_qc/20230607_sd_pull_visit_occurrence_dates_cleaned_overlapping_grids.txt
-    * Intersection with MEGA EUR and AFR set (not IBD filtered)
-        * ./data/sd_data_qc/20230607_sd_pull_person_dates_cleaned_overlapping_grids_mega_grids_EU_AA.txt
-        * ./data/sd_data_qc/20230607_sd_pull_x_codes_dates_cleaned_overlapping_grids_mega_grids_EU_AA.txt
-        * ./data/sd_data_qc/20230607_sd_pull_visit_occurrence_dates_cleaned_overlapping_grids_mega_grids_EU_AA.txt
+     * ./data/sd_data_qc/20230607_sd_pull_person_dates_cleaned_overlapping_grids.txt
+     * ./data/sd_data_qc/20230607_sd_pull_x_codes_dates_cleaned_overlapping_grids.txt
+     * ./data/sd_data_qc/20230607_sd_pull_visit_occurrence_dates_cleaned_overlapping_grids.txt
 
-### :white_check_mark: [CreateDescriptives_CareSites.r](https://bitbucket.org/davislabteam/care_sites/src/master/CreateDescriptives_CareSites.r)
+### [CreateDescriptives_CareSites.r](https://github.com/amlake/care_sites/blob/master/CreateDescriptives_CareSites.r)
 * Characterize care site by patient demographics
 * Characterize care site by visit number and visit type
 * Top ICD and CPT codes for each care site
 * Get top 5 CPT codes for each care site
 * Create table with all variables
-### :bangbang: [MakeFigures.r](https://bitbucket.org/davislabteam/care_sites/src/master/MakeFigures.r)
-### :bangbang: [stankey.Rmd](https://bitbucket.org/davislabteam/care_sites/src/master/stankey.Rmd): Make Sankey plots
-* Depends on: [CreateDescriptives_CareSites.r](https://bitbucket.org/davislabteam/care_sites/src/master/CreateDescriptives_CareSites.r)
-* Exclude from plots: unknown, administrative, phlebotomy, radiology, research
+  
+### [MakeFigures.r](https://github.com/amlake/care_sites/blob/master/MakeFigures.r)
+
+### Make Sankey plots
+* [sankey_plots_1_compile_data.R](https://github.com/amlake/care_sites/blob/master/sankey_plots_1_compile_data.R)
+   * Depends on: [CreateDescriptives_CareSites.r](https://bitbucket.org/davislabteam/care_sites/src/master/CreateDescriptives_CareSites.r)
+   * Exclude from plots: unknown, administrative, phlebotomy, radiology, research
+* [sankey_plots_2_make_plots_run_local.R](https://github.com/amlake/care_sites/blob/master/sankey_plots_2_make_plots_run_local.R)
 
 ### Depression analyses
-#### :white_check_mark: [compile_data.R](https://bitbucket.org/davislabteam/care_sites/src/master/mdd_application/compile_data.R)
-#### :white_check_mark: [mdd_care_sites.Rmd](http://bitbucket.org/davislabteam/care_sites/src/master/mdd_application/mdd_care_sites.Rmd)
-#### :white_check_mark: [prs_regression.Rmd](https://bitbucket.org/davislabteam/care_sites/src/master/mdd_application/prs_regression.Rmd)
-#### :white_check_mark: [antidepressant_care_sites.Rmd](https://bitbucket.org/davislabteam/care_sites/src/master/mdd_application/antidepressant_care_sites.Rmd)
-#### :white_check_mark: [depression_st_analyses_descriptive_table.R](https://bitbucket.org/davislabteam/care_sites/src/master/mdd_application/depression_st_analyses_descriptive_table.R)
+#### [compile_data.R](https://github.com/amlake/care_sites/blob/master/mdd_application/compile_data.R)
+#### [mdd_care_sites.Rmd](https://github.com/amlake/care_sites/blob/master/mdd_application/mdd_care_sites.Rmd)
+#### [prs_regression.Rmd](https://github.com/amlake/care_sites/blob/master/mdd_application/prs_regression.Rmd)
+#### [antidepressant_care_sites.Rmd](https://github.com/amlake/care_sites/blob/master/mdd_application/antidepressant_care_sites.Rmd)
+#### [depression_st_analyses_descriptive_table.R](https://github.com/amlake/care_sites/blob/master/mdd_application/depression_st_analyses_descriptive_table.R)
