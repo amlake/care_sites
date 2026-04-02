@@ -29,13 +29,13 @@ ACCRE working directory: /data/davis_lab/allie/care_sites
 
 ### Make Sankey plots
 * [sankey_plots_1_compile_data.R](https://github.com/amlake/care_sites/blob/master/sankey_plots_1_compile_data.R)
-   * Depends on: [CreateDescriptives_CareSites.r](https://bitbucket.org/davislabteam/care_sites/src/master/CreateDescriptives_CareSites.r)
+   * Depends on: [CreateDescriptives_CareSites.r](https://github.com/amlake/care_sites/blob/master/CreateDescriptives_CareSites.r)
    * Exclude from plots: unknown, administrative, phlebotomy, radiology, research
 * [sankey_plots_2_make_plots_run_local.R](https://github.com/amlake/care_sites/blob/master/sankey_plots_2_make_plots_run_local.R)
 
 ### Depression analyses
-#### [compile_data.R](https://github.com/amlake/care_sites/blob/master/mdd_application/compile_data.R)
-#### [mdd_care_sites.Rmd](https://github.com/amlake/care_sites/blob/master/mdd_application/mdd_care_sites.Rmd)
-#### [prs_regression.Rmd](https://github.com/amlake/care_sites/blob/master/mdd_application/prs_regression.Rmd)
-#### [antidepressant_care_sites.Rmd](https://github.com/amlake/care_sites/blob/master/mdd_application/antidepressant_care_sites.Rmd)
-#### [depression_st_analyses_descriptive_table.R](https://github.com/amlake/care_sites/blob/master/mdd_application/depression_st_analyses_descriptive_table.R)
+#### [compile_data.R](https://github.com/amlake/care_sites/blob/master/depression_application/compile_data.R)
+#### [depression_care_sites.Rmd](https://github.com/amlake/care_sites/blob/master/depression_application/depression_care_sites.Rmd)
+#### [prs_regression.Rmd](https://github.com/amlake/care_sites/blob/master/depression_application/prs_regression.Rmd)
+#### [antidepressant_care_sites.Rmd](https://github.com/amlake/care_sites/blob/master/depression_application/antidepressant_care_sites.Rmd)
+#### [depression_st_analyses_descriptive_table.R](https://github.com/amlake/care_sites/blob/master/depression_application/depression_st_analyses_descriptive_table.R)
