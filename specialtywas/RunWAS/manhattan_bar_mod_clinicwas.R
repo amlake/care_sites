@@ -1,0 +1,135 @@
+pacman::p_load(data.table, dplyr, ggplot2, ggrepel, scales)
+
+## input: 
+## dat = data frame with the following columns:
+##  - care_site_id
+##  - care_site_name
+##  - specialty
+##  - n_phe_per_site
+##  - freq_phe_per_site
+
+# dat <- copy(caresite_plot_df)
+
+caresite_manhattan_bar <- function(dat, points = FALSE, flip = FALSE, custom_labels = NULL, highlight_var = NULL, bonf=NULL) {
+    dat <- as.data.table(as.data.frame(dat))
+
+    plot_df <- dat %>%
+        select(care_site_id, care_site_name, specialty, n_phe_per_site, freq_phe_per_site, highlight_var) %>%
+        group_by(specialty) %>%
+        mutate(N = n()) %>% ## number of data points per specialty, for plotting purposes
+        data.table()
+
+    plot_df[, N := ifelse(N<3, N + 10, N + 5)]
+
+    ## Group specialties into 3 groups: Medical, Surgical, Other
+    ## TODO: confirm with John that this is the correct annotation file
+    Specialties_3group <- fread("/data/davis_lab/allie/care_sites/output/Figures/Descriptives/Specialties_NCareSites_Label_ANNOTATED_JPS_052325.csv") %>%
+        rename(specialty = MappedSpecialty) %>%
+        filter(specialty %in% plot_df$specialty) %>%
+        select(specialty, Group) %>%
+        data.table()
+
+    Specialties_3group <- merge(Specialties_3group, unique(plot_df[, .(specialty, N)]), by = "specialty")
+    Specialties_3group$Group <- factor(Specialties_3group$Group, levels = c("Medical", "Surgical", "Other"))
+
+    # Create group to alternate light/dark shades
+    group_colors <- c(
+        "Medical_light" = "#e64a358a", "Medical_dark" = "#e64a358a",
+        "Surgical_light" = "#3c548881", "Surgical_dark" = "#3c548881",
+        "Other_light" = "#00a0887e", "Other_dark" = "#00a0887e",
+        "highlight" = "#F1D52F"
+    )
+
+    # Create a base x-axis value for each specialty
+    specialty_base <- Specialties_3group
+    setorder(specialty_base, Group, specialty)
+    specialty_base[, base_value := cumsum(N) - N]
+
+    # Order the care sites by specialty and then by care site name
+    plot_df <- merge(plot_df, Specialties_3group[, .(specialty, Group)], by = "specialty")
+    plot_df <- merge(plot_df, specialty_base[, .(specialty, base_value)], by = "specialty")
+    
+    setorder(plot_df, specialty, care_site_name)
+    plot_df[, id := seq_len(.N), by = specialty]
+    plot_df[, id := rowid(specialty)]
+    plot_df[, RowNumber := base_value + id]
+
+    plot_df <- plot_df %>%
+        group_by(Group, specialty) %>%
+        mutate(cur_group_id = cur_group_id()) %>%
+        mutate(Group_Shade = case_when(
+            get(highlight_var) == TRUE ~ "highlight",
+            #!is.null(highlight_var) && highlight_var %in% names(.) && get(highlight_var) == TRUE ~ "highlight",
+            cur_group_id %% 2 == 0 ~ paste(Group, "light", sep = "_"),
+            TRUE ~ paste(Group, "dark", sep = "_")
+        )) %>%
+        mutate(Specialty_midpoint = median(RowNumber)) %>%
+        ungroup() %>%
+        data.table()
+
+    midpoint_labels <- plot_df %>%
+        group_by(specialty) %>%
+        summarize(midpoint = median(RowNumber)) %>%
+        ungroup()
+
+    if (FALSE) {
+        N_spec <- n_distinct(plot_df$specialty)
+        pal <- rev(rep(brewer.pal(n = 8, name = "Set2"), 6)[1:N_spec])
+        spec_order <- unique(plot_df[, .(specialty)])
+        spec_order$Color <- pal
+        plot_df <- merge(plot_df, spec_order, by = "specialty")
+    }
+
+    ## label care sites based on custom input, or default to top 5 if no custom labels provided
+    custom_labels <- as.data.table(as.data.frame(custom_labels))
+
+    if (!is.null(custom_labels)) {
+        plot_df_label <- plot_df %>%
+            inner_join(custom_labels, by = c("care_site_id", "care_site_name"))
+    } else {
+        plot_df_label <- plot_df %>%
+            filter(abs(freq_phe_per_site) < 0.05) %>%
+            arrange(abs(freq_phe_per_site)) %>%
+            group_by(specialty) %>%
+            slice(1:5)
+    }
+
+    ## create the plot
+    p <- ggplot(plot_df, aes(x = RowNumber, y = freq_phe_per_site, fill = Group_Shade)) 
+
+    if (points == TRUE) { 
+        p <- p + geom_point(shape = ifelse(flip == TRUE, 21, 24), size = 3, color = 'black')
+    } else {
+        p <- p + geom_bar(stat = "identity", color = 'black')
+    }
+
+    p <- p +
+        geom_label_repel(
+            data = plot_df_label,
+            aes(label = care_site_name),
+            size = 2.5,
+            box.padding = 0.5, point.padding = 0.5,
+            vjust = 0.5, hjust = 0.5, max.overlaps = 20
+        ) +
+        scale_x_continuous(breaks = midpoint_labels$midpoint, labels=midpoint_labels$specialty) +
+        scale_fill_manual(values = group_colors) +
+        geom_hline(yintercept = bonf, linetype = "dashed", color = "red", alpha=0.6) +
+        theme_minimal(base_family = "Helvetica") +
+        theme(
+            text = element_text(size = 11),
+            axis.text.x = element_blank(),
+            axis.title.x = element_text(hjust = 0.5),
+            axis.text.y = element_text(size = 9),
+            plot.title = element_text(hjust = 0.5),
+            axis.title.y = element_text(hjust = 0.5),
+            legend.position = "none",
+            panel.grid.major.x = element_blank(), panel.grid.minor.x = element_blank(),
+            plot.margin =  margin(t = 0.5, r = 0.5, b = 0.5, l = 0.5, unit = "cm")
+        )
+
+    if (flip == TRUE) {
+        p <- p + scale_y_reverse()
+    }
+
+    return(p)
+}

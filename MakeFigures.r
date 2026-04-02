@@ -72,6 +72,9 @@ visitsummary_nonmissing_caresite
 # 7 n_encounters_admin       27422
 # 8 n_encounters_unclear   7982922
 
+# Why could some care sites not be mapped to a specialty?
+visitcounts %>% filter(specialty=="Unclear")
+
 # All visits mapped to a defined, non-administrative specialty: count by setting
 # Not including null care sites or unclear or administrative specialties
 # @John I modified this table so it could be used to directly calculate the stats for supp table 1
@@ -115,7 +118,7 @@ n_spec <- CareSiteMap_MultiSpecialty %>%
 
 n_spec # 58
 
-###### Supplemental Tables 1: Demographic characteristics of visits #####
+###### Supplemental Table 2: Demographic characteristics of visits after filtering unmapped/non-clinical care sites#####
 ## Count how many NAs there are in the descriptive variables
 FilteredCareSites %>% 
   summarise(across(c(Visits_N, Adult_N, Female_N, Outpt_N, Inpt_N, Emer_N, Unspecified_N), ~sum(is.na(.)))) %>%
@@ -160,9 +163,9 @@ visitsummary_pretty <- tibble(
   )
 )
 
-fwrite(visitsummary_pretty, "./output/Figures/Descriptives/SupplementalTable1_VisitDescriptives_JPS_052325.csv")
+fwrite(visitsummary_pretty, "./output/Figures/Descriptives/SupplTable2_EncounterDescriptives.csv")
 
-###### Supplemental Table 2: Summary of care sites by demographic characteristics #####
+###### Supplemental Table 3: Summary of care sites by demographic characteristics #####
 ## Count how many NAs there are in the descriptive variables
 # Only pherank has missingness (missing in 98 sites 2/2 missing phecodes in sites w/ little actual billing)
 FilteredCareSites %>% 
@@ -240,21 +243,23 @@ desc_median_pretty <- tibble(
 categorical_counts <- 
 bind_rows(FilteredCareSites %>% count(AgeSpecific) %>% arrange(desc(n)) %>% mutate(category_type = "Age Specific"),
           FilteredCareSites %>% count(GenderSpecific) %>% arrange(desc(n)) %>% mutate(category_type = "Gender Specific"),
+          FilteredCareSites %>% count(IsMultiSpecialty) %>% arrange(desc(n)) %>% mutate(category_type = "Multi-Specialty"),
           FilteredCareSites %>% count(MajorityVisitType) %>% arrange(desc(n)) %>% mutate(category_type = "Visit Type"),
           FilteredCareSites %>% count(pherank_1_category) %>% arrange(desc(n)) %>% filter(row_number()<=5) %>% mutate(category_type = "Top Phenotype")) %>%
   mutate(AgeSpecific = ifelse(AgeSpecific == "NonSpecific", "Age-NonSpecific", AgeSpecific),
-         GenderSpecific = ifelse(GenderSpecific == "NonSpecific", "Gender-NonSpecific", GenderSpecific)) %>%
+         GenderSpecific = ifelse(GenderSpecific == "NonSpecific", "Gender-NonSpecific", GenderSpecific),
+         IsMultiSpecialty = ifelse(IsMultiSpecialty, "Multi-Specialty Clinic", "Single Specialty")) %>%
   group_by(category_type) %>%
   mutate(percent = n/sum(n) * 100, 
           Value = sprintf("%d (%.1f%%)", n, percent), 
-          Characteristic = coalesce(AgeSpecific, GenderSpecific, MajorityVisitType, pherank_1_category)) %>%
+          Characteristic = coalesce(AgeSpecific, GenderSpecific, MajorityVisitType, IsMultiSpecialty, pherank_1_category)) %>%
   as.data.frame() %>%
   select(Characteristic, Value)
 
 # Combine quantitative and categorical results
 desc_maintable_pretty <- bind_rows(desc_median_pretty, categorical_counts)
 
-fwrite(desc_maintable_pretty, "./output/Figures/Descriptives/SupplementalTable2_CareSiteDescriptives_JPS_052325.csv")
+fwrite(desc_maintable_pretty, "./output/Figures/Descriptives/SupplTable3_CareSiteDescriptives.csv")
 
 ###### Supplemental Figure 1: Histogram by visit year #####
 FilteredCareSites %>% group_by(x_type) %>% summarise(min(VisitYear_Median))
@@ -274,7 +279,7 @@ hist_visityear <- FilteredCareSites %>%
   geom_bar(alpha = 0.7, stat = "identity") +
   scale_fill_manual(values = c("#3262AB", "#DE6757")) +
   scale_color_manual(values = c("black", "black")) +
-  scale_x_continuous(breaks = seq(1995, 2025, by = 5), limits = c(1995, 2025)) +
+  scale_x_continuous(breaks = seq(1995, 2024, by = 5), limits = c(1995, 2024)) +
   scale_y_continuous(breaks = seq(0, 600, 100)) +
   geom_hline(yintercept = 0, color = "black") +
   labs(x = "Year of median encounter", y = "Number of care sites", fill = "Time Period", color = "Time Period") +
@@ -287,26 +292,9 @@ hist_visityear <- FilteredCareSites %>%
     legend.position = c(0.2,0.8)
   )
 
-pdf("output/Figures/Descriptives/SupplementalFigure1_VisitYearHistogram_JPS_052325.pdf", width = 6, height = 6)
+pdf("output/Figures/Descriptives/SupplFigure1_VisitYearHistogram.pdf", width = 6, height = 6)
 print(hist_visityear)
 dev.off()
-
-###### Supplemental Table 3: Summary of care sites by specialty #####
-desc_byspecialty_suppltable <- FilteredCareSites %>% 
-  group_by(MappedSpecialty) %>%
-  summarise(
-    n_care_sites = n(),
-    # Patient and Visit counts
-    across(c(Person_N, Visits_N), list(median = median, q25 = ~quantile(., 0.25), q75 = ~quantile(., 0.75), mean = mean, sd = sd)),
-    # Year and Age
-    across(c(VisitYear_Median, Age_Median), list(median = median, q25 = ~quantile(., 0.25), q75 = ~quantile(., 0.75))),
-    # Percentages
-    across(c(Adult_Percent_Numeric, Female_Percent_Numeric, Outpt_Percent_Numeric, Inpt_Percent_Numeric, Emer_Percent_Numeric, Unspecified_Percent_Numeric),
-          list(median = median, min = min, max = max))
-  )
-
-# Write to file
-fwrite(desc_byspecialty_suppltable, "./output/Figures/Descriptives/SupplementalTable3_CareSiteDescriptivesBySpecialty_JPS_052325.csv")
 
 ###### Figure 2: Number of Care Sites & Number of visits by setting per Specialty ###### 
 ## Unique specialty combinations: count # of care sites 
@@ -316,24 +304,29 @@ spec_caresite_ct <- FilteredCareSites %>%
   arrange(desc(n))
 
 # Annotate specialties by group
-write.csv(spec_caresite_ct, file="./output/Figures/Descriptives/Specialties_NCareSites_Label_ForAnnotation_JPS_052325.csv", row.names = F)
+write.csv(spec_caresite_ct, file="./output/Figures/Descriptives/Specialties_NCareSites_Label_ForAnnotation.csv", row.names = F)
 
-x_labels <- vroom("./output/Figures/Descriptives/Specialties_NCareSites_Label_ANNOTATED.csv", col_select = c(1, 3))
+# Import annotated file 
+x_labels <- vroom("./output/Figures/Descriptives/Specialties_NCareSites_Label_ANNOTATED.csv")
 
-## keep labels, update N per site with new numbers
-x_labels_new <- x_labels %>% 
-  left_join(spec_caresite_ct, by="MappedSpecialty") %>% 
-  select(MappedSpecialty, n, Group)
-
-fwrite(x_labels_new, "./output/Figures/Descriptives/Specialties_NCareSites_Label_ANNOTATED_JPS_052325.csv")
+## Run if there's an update to the care site data
+# ## keep labels, update N per site with new numbers
+# x_labels_new <- x_labels %>% 
+#   left_join(spec_caresite_ct, by="MappedSpecialty") %>% 
+#   select(MappedSpecialty, n, Group)
+# 
+# fwrite(x_labels_new, "./output/Figures/Descriptives/Specialties_NCareSites_Label_ANNOTATED.csv")
 
 # Make dataset with primary specialties only
 spec_visit_ct <- FilteredCareSites %>% 
   group_by(MappedSpecialty) %>% 
-  summarise(n_care_sites = n_distinct(care_site_id), total_visits = sum(Visits_N),
+  summarise(n_care_sites = n_distinct(care_site_id), total_visits = sum(Visits_N), 
+            total_visits_propoftotal = total_visits*100/sum(FilteredCareSites$Visits_N),
           prop_outpt = sum(Outpt_N)/total_visits, prop_inpt = sum(Inpt_N)/total_visits, 
           prop_emer = sum(Emer_N)/total_visits, prop_unspec = sum(Unspecified_N)/total_visits) %>%
   ungroup() %>%
+  left_join(x_labels, by = "MappedSpecialty") %>%
+  mutate(Group = factor(Group, levels = c("Medical", "Surgical", "Other"))) %>%
   arrange(desc(total_visits)) %>%
   mutate(id = row_number()) %>%
   as.data.frame()
@@ -342,8 +335,6 @@ spec_visit_ct %>% summarise(n())
 spec_visit_ct %>% summarise(sum(total_visits))
 spec_visit_ct %>% filter(id<=5)
 spec_visit_ct %>% filter(id<=25)
-
-fwrite(spec_visit_ct, "./output/Figures/Descriptives/CareSiteDescriptivesBySpecialty_SUMbySpecialty_JPS_052325.csv")
 
 # Make dataset for figure
 figure2 <- spec_visit_ct %>%
@@ -407,13 +398,13 @@ count_visits_byspecialty <- ggplot(figure2,
   scale_fill_manual(values = color_key) +
   scale_y_continuous(labels = scales::comma, expand = expansion(mult = c(0, 0.05))) +
   guides(fill = guide_legend(nrow = 4, override.aes = list(size = 0.5))) +
-  labs(x = " ", y = "Number of Visits (Millions)", fill = "Encounter Setting") +
+  labs(x = " ", y = "Number of Encounters (Millions)", fill = "Encounter Setting") +
   theme_bw() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "top",
         plot.margin =  margin(t = 0, r = 0.1, b = -0.2, l = 0.1, unit = "cm"),
         legend.title = element_text(size = 8), legend.text = element_text(size = 6))
 
-pdf("output/Figures/Descriptives/Figure2_Specialties_NCareSites_NVisits_JPS_052325.pdf", width = 7, height = 7)
+pdf("output/Figures/Descriptives/Figure2_Specialties_NCareSites_NVisits.pdf", width = 7, height = 7)
 ggarrange(count_caresites_byspecialty, count_visits_byspecialty, nrow=2, ncol=1, heights = c(1.5, 2))
 dev.off()
 
@@ -489,7 +480,7 @@ specialty_list_sorted <- names(sort(care_site_counts, decreasing = FALSE))
 
 # First create a named vector mapping specialties to their groups
 specialty_groups <- CareSiteMap_MultiSpecialty %>%
-  left_join(x_labels_new, by=c("SpecialtyLong"="MappedSpecialty")) %>%
+  left_join(x_labels, by=c("SpecialtyLong"="MappedSpecialty")) %>%
   filter(SpecialtyLong!="Unclear") %>%
   mutate(Group = ifelse(SpecialtyLong=="UrgentCare", "Medical", Group)) %>%
   distinct(SpecialtyLong, Group) %>%
@@ -514,21 +505,48 @@ upsetcount_byspecialty <- upset(figure_suppl2,
       sets.x.label = "Unique care sites",
       sets.bar.color = set_colors)
 
-pdf("output/Figures/Descriptives/SupplementalFigure2_UpsetPlot_Specialties_JPS_052325.pdf", width = 7, height = 7)
+pdf("output/Figures/Descriptives/SupplFigure2_UpsetPlot_Specialties.pdf", width = 7, height = 7)
 print(upsetcount_byspecialty)
 dev.off()
 
-###### Supplemental Table 4: Top 50 care sites with annotated features #####
-Top50 <- FilteredCareSites %>% 
-  left_join(x_labels, by = "MappedSpecialty") %>%
-  mutate(Group = factor(Group, levels = c("Medical", "Surgical", "Other"))) %>%
-  arrange(desc(Visits_N)) %>% filter(row_number()<=50)
+###### Supplemental Data 1: Full care-site specialty map and annotated features #####
+## 1A - Specialty Descriptive Statistics ##
+caresitedesc_filtered <- FilteredCareSites %>% 
+  arrange(desc(Visits_N)) %>%
+  select(-c("place_of_service_concept_id","location_id","care_site_source_value","dept_abbreviation",
+            "facility","dept_specialty","dept_center","care_area",
+            "Adult_Percent_Numeric","Female_Percent_Numeric","Outpt_Percent_Numeric","Inpt_Percent_Numeric",
+            "Emer_Percent_Numeric","Unspecified_Percent_Numeric"))
 
-write.xlsx(Top50, "./output/Figures/Descriptives/SupplementalTable4_Top50MostCommonCareSites_JPS_052325.xlsx", colWidths = "auto")
+## 1B - Specialty Descriptive Statistics ##
+desc_byspecialty_suppltable <- FilteredCareSites %>% 
+  group_by(MappedSpecialty) %>%
+  summarise(
+    n_care_sites = n(),
+    # Patient and Visit counts
+    across(c(Person_N, Visits_N), list(median = median, q25 = ~quantile(., 0.25), q75 = ~quantile(., 0.75), mean = mean, sd = sd)),
+    # Year and Age
+    across(c(VisitYear_Median, Age_Median), list(median = median, q25 = ~quantile(., 0.25), q75 = ~quantile(., 0.75))),
+    # Percentages
+    across(c(Adult_Percent_Numeric, Female_Percent_Numeric, Outpt_Percent_Numeric, Inpt_Percent_Numeric, Emer_Percent_Numeric, Unspecified_Percent_Numeric),
+           list(median = median, min = min, max = max))
+  )
 
-###### Supplemental Table 5: Cardiology care sites with annotated features #####
+## Create workbook with both sheets
+wb <- createWorkbook()
+
+addWorksheet(wb, "SupplData1a_CareSites")
+writeData(wb, "SupplData1a_CareSites", caresitedesc_filtered)
+
+addWorksheet(wb, "SupplData1b_BySpecialty")
+writeData(wb, "SupplData1b_BySpecialty", desc_byspecialty_suppltable)
+
+saveWorkbook(wb, "./output/Figures/Descriptives/SupplData1_CareSiteMap.xlsx", overwrite = TRUE)
+
+###### OLD: Cardiology care sites with annotated features #####
 Cardiology <- FilteredCareSites %>% 
   filter(MappedSpecialty=="Cardiology") %>% 
   arrange(desc(Visits_N))
 
-write.xlsx(Cardiology, "./output/Figures/Descriptives/SupplementalTable5_CardiologyCareSites_JPS_052325.xlsx", colWidths = "auto")
+# write.xlsx(Cardiology, "./output/Figures/Descriptives/SupplTable6_CardiologyCareSites.xlsx", colWidths = "auto")
+

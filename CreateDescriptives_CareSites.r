@@ -28,6 +28,18 @@ names(CareSiteMap)
 
 CareSiteMap %>% group_by(specialty,OtherSpecialty_1,OtherSpecialty_2) %>% 
   summarise(count=sum(VisitCount)) %>% arrange(desc(count))
+# specialty     OtherSpecialty_1 OtherSpecialty_2   count
+# <chr>         <chr>            <chr>              <dbl>
+#   1 Unclear       NA               NA               8161101
+# 2 PrimaryCare   NA               NA               6525272
+# 3 Radiology     NA               NA               3383774
+# 4 Cardiology    NA               NA               3198683
+# 5 HemeOnc       NA               NA               2908000
+# 6 Orthopedics   NA               NA               2648242
+# 7 PrimaryCare   UrgentCare       NA               2375062
+# 8 OBGYN         NA               NA               2158153
+# 9 Ophthalmology NA               NA               1977885
+# 10 Surgery       NA               NA               1466572
 
 # Define alternative maps
 CareSiteMap_Wide <- CareSiteMap %>% select(1,13,15:17) %>% replace(is.na(.), 0)
@@ -55,7 +67,6 @@ care_site_joined <- left_join(care_site, x_care_site, by="care_site_id") %>%
 
 ######## Table 1: Characterize care site by patient demographics ######## 
 visit_occurrence <- as.data.frame(fread("data/sd_data_qc/20230607_sd_pull_visit_occurrence_dates_cleaned_overlapping_grids.txt"))
-#visit_occurrence_dupsremoved <- visit_occurrence[!duplicated(visit_occurrence[c("GRID", "care_site_id", "visit_start_date")]), ]
 
 person <- as.data.frame(fread("data/sd_data_qc/20230607_sd_pull_person_dates_cleaned_overlapping_grids.txt"))
 
@@ -145,10 +156,12 @@ encounters_mapped %>% summarise(n_distinct(care_site_id)) # 2189 after excluding
 encounters_mapped %>% summarise(n_distinct(specialty)) # 57
 
 # administrative and unclear care sites
+encounters %>% summarise(n_distinct(specialty)) # 60 including NA (missing care_site_id) & Unclear
+# For flow chart: 58 specialties "mapped" but admin is later excluded
 encounters %>% filter(specialty == "Administrative") %>% summarise(n_distinct(care_site_id)) # 34 administrative sites
 encounters %>% filter(specialty == "Unclear") %>% summarise(n_distinct(care_site_id)) # 321 unclear sites
-encounters %>% filter(care_site_id !=0 & specialty == "Administrative") %>% nrow() # 27424 administrative visits
-encounters %>% filter(care_site_id !=0 & specialty == "Unclear") %>% nrow() # 7983412 unclear visits
+encounters %>% filter(care_site_id !=0 & specialty == "Administrative") %>% nrow() # 27422 administrative visits
+encounters %>% filter(care_site_id !=0 & specialty == "Unclear") %>% nrow() # 7982922 unclear visits
 
 #fwrite(encounters, file="./output/CareSiteDescriptives_AML_010425/encounters_annotated.csv")
 fwrite(encounters, file="./output/CareSiteDescriptives/encounters_annotated.csv")
@@ -341,6 +354,8 @@ fwrite(top100cpt, file="./output/CareSiteDescriptives/top100cptcodes_by_caresite
 fwrite(allcpt_ranked, file="./output/CareSiteDescriptives/allcptcodes_by_caresite_long.csv") # DONE
 fwrite(allphe_ranked, file = "./output/CareSiteDescriptives/allphecodes_by_caresite_long.csv") # DONE
 
+## Start here if only checking counts (import care site maps first)
+# Import all written files
 care_site_joined <- fread(file="./output/CareSiteDescriptives/omop_care_site_info.csv")
 caresite_encounters <- fread(file="./output/CareSiteDescriptives/visit_counts_by_caresite.csv")
 patient_demographics <- fread(file="./output/CareSiteDescriptives/patient_demographics_by_caresite.csv")
@@ -402,11 +417,9 @@ All <- subset(FinalSummary_CareSites, care_site_id!="0" & MappedSpecialty!="Admi
 write.xlsx(All, "./output/CareSite_VisitDetailCount_FILTERED_JPS_052325.xlsx", colWidths = "auto")
 
 ## Write formatted table for supplement
-# Remove care sites with <100 patients per site
 # Remove unneeded columns
 # Remove ZZZ and other weird characters from care site names
 SuppDataTable <- All %>% 
-  filter(Person_N >= 100) %>%
   mutate(IsMultiSpecialty = ifelse(IsMultiSpecialty==TRUE, 1, 0),
          MultiSpecialty_Secondary = ifelse(MultiSpecialty_Secondary==0, "", MultiSpecialty_Secondary), 
          MultiSpecialty_Tertiary = ifelse(MultiSpecialty_Tertiary ==0, "", MultiSpecialty_Tertiary ), 
@@ -414,9 +427,7 @@ SuppDataTable <- All %>%
   mutate(care_site_name = gsub("ZZZ|zzz", "", care_site_name)) %>%
   mutate(care_site_name = sub("^-+", "", care_site_name)) %>%
   select(care_site_id, care_site_name, MappedSpecialty, MultiSpecialty_Secondary, MultiSpecialty_Tertiary, 
-         Person_N, Visits_N, VisitYear_Median, Age_Median, 
-         Adult_N, Adult_Percent, Female_N, Female_Percent, SexSpecific = GenderSpecific, AgeSpecific,
-         Outpt_N, Outpt_Percent, Inpt_N, Inpt_Percent, Emer_N, Emer_Percent, Unspecified_N, Unspecified_Percent, MajorityVisitType,
+         Person_N, Visits_N, VisitYear_Median, Age_Median, SexSpecific = GenderSpecific, AgeSpecific, MajorityVisitType,
          pherank_1, pherank_1_description, pherank_1_category,
          pherank_2, pherank_2_description, pherank_2_category,
          pherank_3, pherank_3_description, pherank_3_category,
@@ -428,4 +439,4 @@ SuppDataTable <- All %>%
          cptrank_4, cptrank_4_description,
          cptrank_5, cptrank_5_description)
 
-write.xlsx(SuppDataTable, "./output/Figures/Descriptives/SuppData1_CareSite_VisitDetailCount_FILTERED_052325.xlsx", colWidths = "auto")
+write.xlsx(SuppDataTable, "./output/Figures/Descriptives/SupplData1_CareSiteMap_JPS_012826.xlsx", colWidths = "auto")
